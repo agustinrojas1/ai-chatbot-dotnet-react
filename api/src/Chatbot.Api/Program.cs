@@ -1,3 +1,4 @@
+using Chatbot.Api.Endpoints;
 using Chatbot.Infrastructure;
 using Chatbot.Infrastructure.Persistence;
 using Chatbot.Infrastructure.Seeding;
@@ -37,6 +38,9 @@ app.MapHealthChecks("/health/ready", new()
 {
     Predicate = c => c.Tags.Contains("ready"),
 });
+
+app.MapNicheEndpoints();
+app.MapSessionEndpoints();
 
 app.Run();
 

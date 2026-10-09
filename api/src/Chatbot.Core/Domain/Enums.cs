@@ -38,6 +38,9 @@ public enum MessageRole
 {
     User,
     Assistant,
+
+    /// <summary>One executed tool call and its result (JSON). Context for the model only: it is never shown as a chat bubble.</summary>
+    Tool,
 }
 
 public enum AgentRunStatus

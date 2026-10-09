@@ -67,6 +67,7 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         b.HasKey(x => x.Id);
         b.Property(x => x.CustomerName).HasMaxLength(200).IsRequired();
         b.Property(x => x.CustomerPhone).HasMaxLength(50).IsRequired();
+        b.Property(x => x.Notes).HasMaxLength(500);
         b.Property(x => x.Items).HasColumnType("jsonb");
         b.Property(x => x.IdempotencyKey).HasMaxLength(200).IsRequired();
         b.HasOne<Business>().WithMany().HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Restrict);

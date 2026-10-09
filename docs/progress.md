@@ -10,3 +10,9 @@
 - Idempotent seed: 3 businesses, 28 offerings (v1 items ported + invented extras, see `docs/seed-notes.md`), rolling 14-day slots.
 - Tests (Testcontainers): invariants, concurrency on last slot, seeder idempotency.
 - Pending: persona prompts hold business facts until a Business column exists; seeder never updates existing rows.
+
+## M2 — Agent without UI (real-model smoke PENDING)
+- 5 tools, FallbackChatClient (429/5xx before first token), AgentService (streaming, tool rows replayed between turns, fail-closed runs, per-call cost), language detection, SSE endpoints (`/api/niches`, `/api/sessions`, `/api/sessions/{id}/messages`).
+- Advisor review applied (see ADR-004 and docs/architecture.md).
+- Tested with a scripted fake `IChatClient`; curl against the real endpoint returns a clean `error` event without an API key.
+- Pending: acceptance smoke against a real model (needs `LLM_PRIMARY_API_KEY`/`LLM_PRIMARY_MODEL`); verify tool calling in streaming through the OpenAI-compatible endpoint (SPEC 8).

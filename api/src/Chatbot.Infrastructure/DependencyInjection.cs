@@ -1,3 +1,5 @@
+using Chatbot.Infrastructure.Agent;
+using Chatbot.Infrastructure.Llm;
 using Chatbot.Infrastructure.Persistence;
 using Chatbot.Infrastructure.Seeding;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +21,9 @@ public static class DependencyInjection
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IDatabaseSeeder, DatabaseSeeder>();
+        services.AddLlm(configuration);
+        services.AddOptions<AgentOptions>().Bind(configuration.GetSection(AgentOptions.SectionName));
+        services.AddScoped<AgentService>();
 
         return services;
     }

@@ -66,6 +66,9 @@ public class Booking
     public string CustomerName { get; set; } = "";
     public string CustomerPhone { get; set; } = "";
 
+    /// <summary>Optional free-text note from the customer for the business (max 500 characters).</summary>
+    public string? Notes { get; set; }
+
     /// <summary>jsonb array of order lines (<c>[{offeringId, qty, options}]</c>); null for slot bookings.</summary>
     public JsonElement? Items { get; set; }
 
