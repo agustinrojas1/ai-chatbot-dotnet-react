@@ -17,7 +17,7 @@ public sealed class ToolCallTracer(TraceRecorder recorder)
     /// <summary>Tool error codes that mean "a rule held the line", besides every <c>invalid_*</c> (bad arguments).</summary>
     private static readonly HashSet<string> GuardrailCodes =
     [
-        "slot_full", "slot_in_past", "session_awaiting_human", "session_closed", "range_too_long", "missing_target",
+        "slot_full", "slot_in_past", "session_awaiting_human", "session_closed", "range_too_long", "missing_target", "customer_data_not_provided",
     ];
 
     public async ValueTask<object?> InvokeAsync(FunctionInvocationContext context, CancellationToken cancellationToken)

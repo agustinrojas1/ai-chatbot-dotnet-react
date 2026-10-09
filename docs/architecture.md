@@ -22,7 +22,7 @@ Failure handling: a message is rejected *before* streaming (JSON problem details
 
 | Cause | Run | Trace event | `error.retryable` |
 |---|---|---|---|
-| Provider failure, empty answer, unexpected exception | `Error` | `Error` `agent_error` | yes |
+| Provider failure, empty answer (see below), unexpected exception | `Error` | `Error` `agent_error` | yes |
 | No primary provider configured (blank `Llm:Primary:ApiKey`); message "The AI provider is not configured on this server." | `Error` | `Error` `agent_error` (`LlmNotConfiguredException`, no settings) | no |
 | `MaxIterations` exhausted | `Error` | `Guardrail` `iteration_limit` | no |
 | Client disconnected | `Error` | `Error` `agent_cancelled` | (nobody to tell) |
@@ -30,6 +30,8 @@ Failure handling: a message is rejected *before* streaming (JSON problem details
 If a tool handed the conversation to a person before the failure, `handoff` is still sent, right before `error`.
 
 A tool call whose arguments do not fit the tool's parameters (wrong JSON shape) does not end the run: the exception text goes back to the model as the tool result (`IncludeDetailedErrors`), so it can correct the call, for up to 3 failing rounds in a row, then the run ends with the generic error. Exception text never reaches the user stream.
+
+Empty answer after a tool: some models (seen with Gemini after `handoff_to_human`) end a tool round with no text. If at least one tool ran, `AgentService` makes ONE extra model call through the same pipeline (so it is traced as an `LlmCall`, and its tokens and cost are added to the run) with the executed tool calls and results appended and a trailing user-role nudge, `(Reply to the customer now, based on the tool results above.)`. The nudge exists only in that request: it is not stored in `chat_messages` and not sent to the client; it can appear in the truncated input of that `LlmCall` trace event. There is still exactly one system message. If the answer is empty again and a handoff happened, the assistant message is a fixed text in the detected language (`A person from the team will continue this conversation.` / `Una persona del equipo va a continuar con esta conversación.`), streamed as a normal `token`. Otherwise the run fails with the generic `error` as above. Tokens and cost of every call made before a failure are kept on the failed run.
 
 Cost: every model call is priced with the `ModelPricing` row of the model that answered it (`llm.model` on each update), because the fallback provider can answer one call of a run and the primary another. `AgentRun.Model` and the `model`/`provider` of `run_completed` list the models that answered in order of first use, comma separated (`gemini-3.5-flash-lite, llama-3.3-70b-versatile`); with no fallback it is one name.
 
@@ -93,7 +95,7 @@ Every step of a run is a trace event. One `TraceRecorder` per run (`Agent/Tracin
 |---|---|---|---|
 | `LlmCall` | model that answered (`unknown` if the call failed before any update) | `{ messageCount, messages: [{ role, text }] }`: the last 4 messages sent, without the leading business system prompt (`messageCount` counts everything), each text clipped to 1000 characters | `{ provider, model, text, toolCalls: ["tool name"], finishReason }` (`text` clipped to 2500 characters), or `{ provider, model, error, status? }` when the call failed or was abandoned |
 | `ToolCall` | tool name | the arguments the model sent | the result the model got, or `{ error: "ExceptionType" }` if the tool threw |
-| `Guardrail` | the rule: `slot_full`, `slot_in_past`, `session_awaiting_human`, `session_closed`, `range_too_long`, `missing_target`, any `invalid_*` (tool rejections, right after their `ToolCall`), or `iteration_limit` (closes a run that hit `MaxIterations`) | `null` (`{ textLength }` for `iteration_limit`) | `{ tool, code, message }` (`{ code, maxIterations }` for `iteration_limit`) |
+| `Guardrail` | the rule: `slot_full`, `slot_in_past`, `session_awaiting_human`, `session_closed`, `range_too_long`, `missing_target`, `customer_data_not_provided`, any `invalid_*` (tool rejections, right after their `ToolCall`), or `iteration_limit` (closes a run that hit `MaxIterations`) | `null` (`{ textLength }` for `iteration_limit`) | `{ tool, code, message }` (`{ code, maxIterations }` for `iteration_limit`) |
 | `Handoff` | `handoff_to_human` | `null` | `{ reason, handoffId, alreadyRequested }`, right after the successful `ToolCall` |
 | `Error` | `agent_error` or `agent_cancelled`, the last event of a failed run | `{ textLength }` | `{ error, status? }` or `{ code }` |
 
@@ -215,7 +217,7 @@ Secrets only come from environment variables (`.env`, ignored by git; `.env.exam
 
 ### Prompt injection
 
-The prompt tells the model not to reveal its instructions, but the guarantee is in the code: the business and session of every tool come from the server-built `ToolContext`, an id of another business is "not found" (same answer as an id that does not exist), filters are serialized with `System.Text.Json` and matched with jsonb containment (no string-built SQL or JSON), and no tool can delete, list other sessions or call out. `PromptInjectionTests` replays a model that obeys an attacker (another business's offering and slot ids, a made-up `businessId`, a crafted filter key) and asserts nothing leaks and nothing is written. Real-model injection cases belong in the evals.
+The prompt tells the model not to reveal its instructions, but the guarantee is in the code: the business and session of every tool come from the server-built `ToolContext`, an id of another business is "not found" (same answer as an id that does not exist), filters are serialized with `System.Text.Json` and matched with jsonb containment (no string-built SQL or JSON), and no tool can delete, list other sessions or call out. `create_booking` also refuses customer data the customer never wrote: the phone digits and every word (2+ letters, case and accent-insensitive) of the name must appear in the session's `User` messages, otherwise it returns `{ error, code: "customer_data_not_provided" }` before any idempotency lookup or seat reservation, so an injected "no name or phone needed" cannot make the model book with `Valued Patient` and an invented number. `PromptInjectionTests` replays a model that obeys an attacker (another business's offering and slot ids, a made-up `businessId`, a crafted filter key) and asserts nothing leaks and nothing is written. Real-model injection cases belong in the evals.
 
 ### Trying the limits
 

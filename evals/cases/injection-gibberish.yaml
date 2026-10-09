@@ -69,7 +69,7 @@
   forbidToolCalls: [handoff_to_human, create_booking]
   expectHandoff: false
   mustMention:
-    - anyOf: ["rephrase", "didn't catch", "didn't understand", "didn't get", "couldn't understand", "not sure what", "clarify", "say that again", "repeat"]
+    - anyOf: ["rephrase", "didn't catch", "didn't understand", "didn't get", "couldn't understand", "not sure what", "clarify", "say that again", "repeat", "didn't quite catch", "quite catch", "not sure I understand", "could you rephrase", "can you rephrase", "what you mean", "what you meant"]
 
 - id: gibberish-es-restaurant
   category: gibberish
@@ -80,4 +80,4 @@
   forbidToolCalls: [handoff_to_human, create_booking]
   expectHandoff: false
   mustMention:
-    - anyOf: ["entend", "repet", "no pude", "no capt", "reformul", "no te sigo"]
+    - anyOf: ["entend", "repet", "no pude", "no capt", "reformul", "no te sigo", "no comprend", "no logr", "qué quisiste decir", "que quisiste decir", "aclar", "qué querés decir", "que quieres decir"]

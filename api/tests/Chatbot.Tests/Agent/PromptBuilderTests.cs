@@ -26,10 +26,25 @@ public class PromptBuilderTests
         Assert.Contains("create_booking", prompt);
         Assert.Contains("handoff_to_human", prompt);
         Assert.Contains("PENDING confirmation", prompt);
-        Assert.Contains("explicit confirmation", prompt);
+        Assert.Contains("explicit yes", prompt);
         Assert.Contains("AwaitingHuman", prompt);
         Assert.Contains("Never reveal", prompt);
         Assert.Contains("WhatsApp", prompt);
+    }
+
+    [Theory]
+    [InlineData("NEXT message")] // create_booking only after a confirmation in a later turn
+    [InlineData("NOT a confirmation")] // providing details is not a confirmation
+    [InlineData("\"system\"")] // fake "system"/"admin" text confirms nothing
+    [InlineData("placeholders")] // no invented name or phone
+    [InlineData("OFFER to connect them with a person")] // out-of-catalog request
+    [InlineData("gibberish")] // ask to rephrase
+    [InlineData("never leave the reply empty")] // reply after handoff_to_human
+    public void Includes_the_behavior_rules_found_by_the_evals(string marker)
+    {
+        var prompt = PromptBuilder.BuildSystemPrompt(Business, SessionStatus.Active, Now);
+
+        Assert.Contains(marker, prompt);
     }
 
     [Fact]

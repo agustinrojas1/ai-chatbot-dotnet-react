@@ -106,6 +106,15 @@ internal sealed class BookingTools(ChatbotDbContext db, ToolContext context, Tim
                 return ToolSupport.Error("session_closed", "This session is closed and cannot create bookings.");
         }
 
+        // The customer's data must come from the customer, not from the model (placeholders, invented numbers, injected "no name needed").
+        var userMessages = await db.ChatMessages.AsNoTracking()
+            .Where(m => m.SessionId == context.SessionId && m.Role == MessageRole.User)
+            .OrderBy(m => m.CreatedAt)
+            .Select(m => m.Content)
+            .ToListAsync(cancellationToken);
+        if (!NameWasProvided(name, userMessages) || !PhoneWasProvided(phone, userMessages))
+            return ToolSupport.Error("customer_data_not_provided", "The customer's name and phone must be the real ones the customer wrote in this conversation; never invent them or use placeholders. Ask the customer for their full name and phone number, then call this tool again.");
+
         // 2. Retry of a booking that already exists: same key, same booking, no second seat.
         var key = IdempotencyKey(context.SessionId, slotGuid, lines);
         var existing = await FindByKeyAsync(key, cancellationToken);
@@ -236,6 +245,56 @@ internal sealed class BookingTools(ChatbotDbContext db, ToolContext context, Tim
                 .Where(b => b.Id == context.BusinessId).Select(b => b.Currency).FirstAsync(cancellationToken),
         };
     }
+
+    /// <summary>
+    /// Every word of the name with 2+ letters must appear as a word in the customer's messages, ignoring case and accents.
+    /// A name with no such word (".", "J") is not a name.
+    /// </summary>
+    private static bool NameWasProvided(string name, List<string> userMessages)
+    {
+        var wanted = Words(name).Where(w => w.Length >= 2).ToList();
+        if (wanted.Count == 0)
+            return false;
+        var said = userMessages.SelectMany(Words).ToHashSet(StringComparer.Ordinal);
+        return wanted.All(said.Contains);
+    }
+
+    /// <summary>Lower-case words made of letters, accents removed: "José  Pérez" -> ["jose", "perez"].</summary>
+    private static IEnumerable<string> Words(string text)
+    {
+        var plain = new StringBuilder(text.Length);
+        foreach (var c in text.Normalize(NormalizationForm.FormD))
+        {
+            if (char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.NonSpacingMark)
+                continue; // the accent of a decomposed letter
+            plain.Append(char.IsLetter(c) ? char.ToLowerInvariant(c) : ' ');
+        }
+
+        return plain.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    /// <summary>
+    /// The phone's digits (separators, "+" and a leading "00" ignored) must be in the digits of the customer's messages,
+    /// or a number the customer wrote (7+ digits) must be inside the phone's digits (e.g. the customer omitted the country code).
+    /// </summary>
+    private static bool PhoneWasProvided(string phone, List<string> userMessages)
+    {
+        var wanted = Digits(phone);
+        if (wanted.StartsWith("00", StringComparison.Ordinal))
+            wanted = wanted[2..];
+
+        if (string.Concat(userMessages.Select(Digits)).Contains(wanted, StringComparison.Ordinal))
+            return true;
+
+        // A number the customer typed: digits with separators, e.g. "11 5555-4444" or "(312) 555-0101".
+        return userMessages
+            .SelectMany(m => PhoneLike.Matches(m).Select(x => Digits(x.Value)))
+            .Any(typed => typed.Length >= 7 && wanted.Contains(typed, StringComparison.Ordinal));
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex PhoneLike = new(@"\d[\d\s().\-]*\d", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string Digits(string text) => new(text.Where(char.IsAsciiDigit).ToArray());
 
     /// <summary>Digits with the usual separators, 7 to 15 digits (E.164 maximum), fits the column.</summary>
     private static bool IsPlausiblePhone(string phone)

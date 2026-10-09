@@ -501,7 +501,94 @@ public class AgentServiceTests(PostgresFixture postgres)
         var events = await world.RunAsync(sessionId, "hello there");
 
         Assert.IsType<Error>(events[^1]);
+        Assert.Single(llm.Calls); // no tool ran, so there is nothing to nudge about
         Assert.Equal([MessageRole.User], (await world.MessagesAsync(sessionId)).Select(m => m.Role));
+    }
+
+    private const string Nudge = "(Reply to the customer now, based on the tool results above.)";
+
+    [Fact]
+    public async Task Empty_text_after_a_tool_call_gets_one_nudged_call_that_is_traced_priced_and_not_stored()
+    {
+        var llm = new ScriptedChatClient(
+            Turn.Call(AgentToolFactory.SearchCatalog, new() { ["query"] = "cleaning" }).WithUsage(500, 20),
+            Turn.Reply().WithUsage(600, 0),
+            Turn.Reply("A cleaning costs ", "USD 60.").WithUsage(700, 30));
+        var world = await AgentWorld.CreateAsync(postgres, llm);
+        var sessionId = await world.NewSessionAsync();
+
+        var events = await world.RunAsync(sessionId, "How much is a cleaning?");
+
+        Assert.IsType<RunCompleted>(events[^1]);
+        Assert.Equal("A cleaning costs USD 60.", string.Concat(events.OfType<Token>().Select(t => t.Text)));
+
+        // Third call: same single system message, the tool exchange, and the nudge as the last (user) message.
+        var nudged = llm.Calls[2];
+        Assert.Equal(1, nudged.Count(m => m.Role == ChatRole.System));
+        Assert.Equal((ChatRole.User, Nudge), (nudged[^1].Role, nudged[^1].Text));
+        Assert.Contains(nudged, m => m.Contents.OfType<FunctionCallContent>().Any());
+        Assert.Contains(nudged, m => m.Contents.OfType<FunctionResultContent>().Any());
+
+        // Usage and trace of every call, the extra one included.
+        var run = await world.SingleRunAsync(sessionId);
+        Assert.Equal((AgentRunStatus.Ok, 1800, 50), (run.Status, run.TokensIn, run.TokensOut));
+        var trace = await world.TraceAsync(run.Id);
+        Assert.Equal(3, trace.Count(e => e.Type == TraceEventType.LlmCall));
+        Assert.Equal(run.CostUsd, trace.Sum(e => e.CostUsd ?? 0));
+
+        // The nudge is in no stored message; the answer is.
+        var messages = await world.MessagesAsync(sessionId);
+        Assert.DoesNotContain(messages, m => m.Content.Contains("Reply to the customer now"));
+        Assert.Equal("A cleaning costs USD 60.", messages.Single(m => m.Role == MessageRole.Assistant).Content);
+    }
+
+    [Theory]
+    [InlineData("I want to talk to a person please", "A person from the team will continue this conversation.")]
+    [InlineData("Quiero hablar con una persona, por favor", "Una persona del equipo va a continuar con esta conversación.")]
+    public async Task Empty_twice_after_a_handoff_sends_a_canned_message_in_the_customer_language(string text, string canned)
+    {
+        var llm = new ScriptedChatClient(
+            Turn.Call(AgentToolFactory.HandoffToHuman, new() { ["reason"] = "wants a person", ["summary"] = "Asked for staff." }).WithUsage(400, 20),
+            Turn.Reply().WithUsage(450, 0),
+            Turn.Reply().WithUsage(460, 0));
+        var world = await AgentWorld.CreateAsync(postgres, llm);
+        var sessionId = await world.NewSessionAsync();
+
+        var events = await world.RunAsync(sessionId, text);
+
+        Assert.Equal([typeof(RunStarted), typeof(Token), typeof(Handoff), typeof(RunCompleted)],
+            events.Where(e => e is not Trace).Select(e => e.GetType()));
+        Assert.Equal(canned, events.OfType<Token>().Single().Text);
+        Assert.Equal(3, llm.Calls.Count);
+
+        var run = await world.SingleRunAsync(sessionId);
+        Assert.Equal((AgentRunStatus.Ok, 1310, 20), (run.Status, run.TokensIn, run.TokensOut));
+        var messages = await world.MessagesAsync(sessionId);
+        Assert.Equal(canned, messages.Single(m => m.Role == MessageRole.Assistant).Content);
+        Assert.DoesNotContain(messages, m => m.Content.Contains("Reply to the customer now"));
+    }
+
+    [Fact]
+    public async Task Empty_twice_after_a_tool_without_handoff_is_still_an_error_and_keeps_the_usage()
+    {
+        var llm = new ScriptedChatClient(
+            Turn.Call(AgentToolFactory.SearchCatalog, new() { ["query"] = "cleaning" }).WithUsage(500, 20),
+            Turn.Reply().WithUsage(600, 0),
+            Turn.Reply().WithUsage(700, 0));
+        var world = await AgentWorld.CreateAsync(postgres, llm);
+        var sessionId = await world.NewSessionAsync();
+
+        var events = await world.RunAsync(sessionId, "How much is a cleaning?");
+
+        var error = Assert.IsType<Error>(events[^1]);
+        Assert.True(error.Retryable);
+        Assert.Equal(3, llm.Calls.Count);
+
+        // What was spent before the failure is not lost on the error path.
+        var run = await world.SingleRunAsync(sessionId);
+        Assert.Equal((AgentRunStatus.Error, 1800, 20), (run.Status, run.TokensIn, run.TokensOut));
+        Assert.True(run.CostUsd > 0);
+        Assert.Equal([MessageRole.User, MessageRole.Tool], (await world.MessagesAsync(sessionId)).Select(m => m.Role));
     }
 
     [Fact]

@@ -163,7 +163,7 @@ public class TracingTests(PostgresFixture postgres)
             ? Turn.Call(AgentToolFactory.CreateBooking, new() { ["slotId"] = slotId.ToString(), ["customerName"] = "Ana Perez", ["customerPhone"] = Phone })
             : Turn.Reply("That slot is taken, pick another.");
 
-        var events = await world.RunAsync(sessionId, "book it");
+        var events = await world.RunAsync(sessionId, $"book it, I'm Ana Perez, {Phone}");
 
         var run = await world.SingleRunAsync(sessionId);
         Assert.Equal(AgentRunStatus.Ok, run.Status);
@@ -190,7 +190,7 @@ public class TracingTests(PostgresFixture postgres)
         var world = await AgentWorld.CreateAsync(postgres, llm);
         var sessionId = await world.NewSessionAsync(Niche.Clinic);
 
-        await world.RunAsync(sessionId, "book it");
+        await world.RunAsync(sessionId, $"book it, I'm Ana Perez, {Phone}");
 
         var stored = await world.TraceAsync((await world.SingleRunAsync(sessionId)).Id);
         var guardrails = stored.Where(e => e.Type == TraceEventType.Guardrail).ToList();

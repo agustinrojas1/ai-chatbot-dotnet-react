@@ -26,7 +26,7 @@ public class EvalRunnerTests(PostgresFixture postgres)
             - say: "I'd like 2 Margherita pizzas and 1 Tiramisu."
               forbidToolCalls: [create_booking]
               mustMention: ["31"]
-            - say: "Yes, place the order."
+            - say: "Yes, place the order. I'm Luca Rossi, +1 555 222 3344."
               expectToolCalls:
                 - name: create_booking
                   count: 1
@@ -115,7 +115,7 @@ public class EvalRunnerTests(PostgresFixture postgres)
               niche: restaurant
               turns:
                 - "I'd like 2 Margherita pizzas and 1 Tiramisu."
-                - "Yes, place the order."
+                - "Yes, place the order. I'm Luca Rossi, +1 555 222 3344."
               forbidToolCalls: [create_booking]
               forbidBooking: true
               forbidPhrases: [pending]

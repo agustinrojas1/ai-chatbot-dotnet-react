@@ -102,14 +102,22 @@ internal sealed class ToolWorld
         return slot;
     }
 
-    public async Task<Session> NewSessionAsync(Business business)
+    /// <summary>What the test customers "say" unless a test gives its own messages: every name and phone the booking tests use.</summary>
+    public const string DefaultCustomerMessage =
+        "Hi! I'm Ana Perez, +54 11 5555-4444. My friend Beto: +54 11 6666-7777. Nico Client, (312) 555-0101 or 312-555-0101.";
+
+    /// <summary>Opens a session whose customer already wrote <paramref name="userMessages"/> (default: <see cref="DefaultCustomerMessage"/>).</summary>
+    public async Task<Session> NewSessionAsync(Business business, params string[] userMessages)
     {
         var db = NewDb();
         var chat = new ChatSession { BusinessId = business.Id, ClientIpHash = "test" };
         db.ChatSessions.Add(chat);
         await db.SaveChangesAsync();
         var context = new ToolContext(business.Id, chat.Id, business.Timezone);
-        return new Session(db, context, AgentToolFactory.Create(db, context, Clock));
+        var session = new Session(db, context, AgentToolFactory.Create(db, context, Clock));
+        foreach (var text in userMessages.Length == 0 ? [DefaultCustomerMessage] : userMessages)
+            await session.SayAsync(text);
+        return session;
     }
 
     public async Task<int> BookedAsync(Guid slotId)
@@ -131,6 +139,13 @@ internal sealed class Session(ChatbotDbContext db, ToolContext context, IList<AI
     public ChatbotDbContext Db => db;
     public ToolContext Context => context;
     public IList<AITool> Tools => tools;
+
+    /// <summary>The customer writes a message (persisted before tools run, like the real agent does).</summary>
+    public async Task SayAsync(string text, MessageRole role = MessageRole.User)
+    {
+        db.ChatMessages.Add(new Chatbot.Core.Domain.ChatMessage { SessionId = context.SessionId, Role = role, Content = text, CreatedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+    }
 
     /// <summary>Invokes a tool with JSON arguments, exactly as a model's tool call would.</summary>
     public async Task<JsonElement> CallAsync(string tool, string argumentsJson = "{}")

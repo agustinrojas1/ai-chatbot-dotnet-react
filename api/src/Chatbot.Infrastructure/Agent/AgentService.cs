@@ -34,6 +34,12 @@ public sealed class AgentService(
     public const string LanguageLabel = "LANGUAGE (highest priority): ";
     private const int ModelColumnLength = 200; // agent_runs.Model
 
+    /// <summary>Last message of the extra model call made when a tool round ends with no text. Never stored, never shown.</summary>
+    private const string ReplyNudge = "(Reply to the customer now, based on the tool results above.)";
+
+    private const string HandoffReplyEn = "A person from the team will continue this conversation.";
+    private const string HandoffReplyEs = "Una persona del equipo va a continuar con esta conversación.";
+
     /// <summary>Consecutive tool rounds that may fail with an exception before the run is aborted.</summary>
     private const int MaxConsecutiveToolErrors = 3;
 
@@ -219,7 +225,7 @@ public sealed class AgentService(
         var tools = new ToolContext(business.Id, session.Id, business.Timezone);
         var pricing = await db.ModelPricings.AsNoTracking().ToDictionaryAsync(p => p.Model, ct);
         var recorder = new TraceRecorder(agentRun.Id, pricing, clock);
-        return Prepared.Accept(new RunState(agentRun.Id, session.Id, messages, tools, recorder, clock.GetTimestamp(), text.Length));
+        return Prepared.Accept(new RunState(agentRun.Id, session.Id, messages, tools, recorder, language, clock.GetTimestamp(), text.Length));
     }
 
     /// <summary>
@@ -266,7 +272,45 @@ public sealed class AgentService(
             MaxOutputTokens = options.Value.MaxOutputTokens,
         };
 
-        await foreach (var update in BuildPipeline(run).GetStreamingResponseAsync(run.Messages, chatOptions, ct))
+        await foreach (var e in StreamPassAsync(run, run.Messages, chatOptions, ct))
+            yield return e;
+
+        // Some models (seen with Gemini after handoff_to_human) end a tool round with no text. The tools already ran,
+        // so ask once more instead of failing: same pipeline (so the call is traced and priced), the executed tool
+        // calls and results appended, and a user-role nudge. The nudge is only in this request: it is never stored
+        // as a chat message and never sent to the client. Still only one system message (ADR-014).
+        if (run.PendingCalls.Count == 0 && run.Answer.Length == 0 && run.Exchanges.Count > 0)
+        {
+            List<AiMessage> retry =
+            [
+                .. run.Messages,
+                .. run.Exchanges.SelectMany(x => x.ToMessages()),
+                new(ChatRole.User, ReplyNudge),
+            ];
+
+            await foreach (var e in StreamPassAsync(run, retry, chatOptions, ct))
+                yield return e;
+
+            // Still nothing. If a person was asked for, the customer needs to hear that, so say it with a fixed text.
+            if (run.PendingCalls.Count == 0 && run.Answer.Length == 0 && run.Tools.HandoffReason is not null)
+            {
+                var canned = run.Language == Language.Spanish ? HandoffReplyEs : HandoffReplyEn;
+                run.Answer.Append(canned);
+                yield return new Token(canned);
+            }
+        }
+
+        if (run.PendingCalls.Count > 0)
+            throw new AgentRunException("iteration_limit", "I couldn't finish that request. Please try rephrasing it or splitting it in smaller steps.", retryable: false);
+        if (run.Answer.Length == 0)
+            throw new AgentRunException("empty_response", "The assistant did not produce an answer. Please try again.", retryable: true);
+    }
+
+    /// <summary>One pass through the pipeline: tokens and trace events go out as they happen, the run state is updated.</summary>
+    private async IAsyncEnumerable<AgentEvent> StreamPassAsync(
+        RunState run, IEnumerable<AiMessage> messages, ChatOptions chatOptions, [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var update in BuildPipeline(run).GetStreamingResponseAsync(messages, chatOptions, ct))
         {
             // Steps that completed before this update was produced (a model call that ended, a tool that ran) go
             // out first, so a ToolCall is always seen before the tokens of the answer that follows it.
@@ -299,11 +343,6 @@ public sealed class AgentService(
         // The last model call completes when its stream ends.
         foreach (var traced in run.Recorder.TakeNew())
             yield return Trace.From(traced);
-
-        if (run.PendingCalls.Count > 0)
-            throw new AgentRunException("iteration_limit", "I couldn't finish that request. Please try rephrasing it or splitting it in smaller steps.", retryable: false);
-        if (run.Answer.Length == 0)
-            throw new AgentRunException("empty_response", "The assistant did not produce an answer. Please try again.", retryable: true);
     }
 
     private async Task<RunCompleted> CompleteAsync(RunState run)
@@ -449,12 +488,13 @@ public sealed class AgentService(
     /// <summary>Everything one run accumulates: context sent to the model, usage, cost, answer text and bookkeeping.</summary>
     private sealed class RunState(
         Guid id, Guid sessionId, List<AiMessage> messages, ToolContext tools,
-        TraceRecorder recorder, long startTimestamp, int inputLength)
+        TraceRecorder recorder, Language language, long startTimestamp, int inputLength)
     {
         public Guid Id { get; } = id;
         public Guid SessionId { get; } = sessionId;
         public List<AiMessage> Messages { get; } = messages;
         public ToolContext Tools { get; } = tools;
+        public Language Language { get; } = language;
         public long StartTimestamp { get; } = startTimestamp;
         public int InputLength { get; } = inputLength;
 

@@ -15,14 +15,17 @@ internal static partial class TextMatch
     // phrase: everything between the hedge and the phrase may be an auxiliary or an adverb, nothing else. So
     // "no issues and is confirmed" is a claim (a "no" that negates something else), and "not confirmed yet" is not.
     // The patterns are matched at the END of the clause before the phrase, on normalized text (see Normalize).
-    private const string EnglishFiller = @"(?:yet|been|be|being|really|fully|actually|officially|formally|still|currently|already|ever|then|also|just|only|soon|finally|get|gets|got|have|has|had|is|are|was|were|will)";
-    private const string SpanishFiller = @"(?:esta|estan|este|esten|sea|sean|haya|hayan|ha|han|tenga|tengan|sido|fue|fueron|es|son|queda|quedo|quedan|quede|queden|sera|seran|se|encuentra|ya|aun|todavia|siendo|estar|oficialmente|finalmente|formalmente|recien|del|todo)";
+    private const string EnglishFiller = @"(?:yet|been|be|being|really|fully|actually|officially|formally|still|currently|already|ever|then|also|just|only|soon|finally|instantly|immediately|automatically|get|gets|got|have|has|had|is|are|was|were|will)";
+    private const string SpanishFiller = @"(?:esta|estan|este|esten|sea|sean|haya|hayan|ha|han|tenga|tengan|sido|fue|fueron|es|son|queda|quedo|quedan|quede|queden|sera|seran|se|encuentra|ya|aun|todavia|siendo|estar|oficialmente|finalmente|formalmente|inmediatamente|automaticamente|instantaneamente|recien|del|todo)";
 
     private static readonly Regex HedgeBefore = new(
         // Negation: "not (yet) confirmed", "isn't confirmed", "has never been confirmed", "no está confirmada", "aún no ha sido confirmada".
         $@"(?:\b(?:not|never|cannot)|n't|\bno longer)(?:\s+{EnglishFiller})*$"
         + $@"|\b(?:no|nunca|jamas|tampoco)(?:\s+{SpanishFiller})*$"
         + @"|\b(?:un|non)-$"
+        // Contrast: "pending confirmation rather than instantly confirmed", "instead of being confirmed", "en lugar de confirmada".
+        + @"|\b(?:rather than|instead of|as opposed to)(?:\s+(?:being|getting|simply|just|already|instantly|immediately|automatically))*$"
+        + @"|\b(?:en lugar de|en vez de|y no|antes que)(?:\s+(?:ser|estar|quedar|ya|inmediatamente|automaticamente|instantaneamente))*$"
         // Future: "will be confirmed", "to be confirmed", "should be confirmed", "será confirmada", "pendiente de ser confirmada".
         + @"|(?:\b(?:will|would|shall|should|can|could|may|might|must|to)|'ll|'d)(?:\s+(?:also|then|soon|only|first|still|just|really|actually|not|never))*\s+be(?:\s+(?:officially|fully|then|formally|finally))*$"
         + @"|\b(?:sera|seran|quedara|quedaran|estara|estaran)(?:\s+(?:oficialmente|luego|finalmente|formalmente))*$"

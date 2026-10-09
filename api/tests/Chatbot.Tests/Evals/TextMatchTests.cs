@@ -56,6 +56,12 @@ public class TextMatchTests
     [InlineData("It stays pending until the business has confirmed.", false)]
     [InlineData("Unless it is confirmed by the clinic, it is only registered.", false)]
     [InlineData("The request is registered and pending confirmation.", false)]
+    [InlineData("Once we set up a booking, it goes to our team as pending confirmation rather than instantly confirmed.", false)]
+    [InlineData("It is registered rather than confirmed.", false)]
+    [InlineData("It is pending instead of being confirmed right away.", false)]
+    [InlineData("It is not instantly confirmed.", false)]
+    [InlineData("Rather than waiting, your visit is confirmed.", true)] // the contrast is about waiting, not about the phrase
+    [InlineData("Instead of calling, just know it is confirmed.", true)]
     public void Forbidden_phrase_is_found_unless_a_hedge_governs_it(string reply, bool flagged) =>
         Assert.Equal(flagged, TextMatch.ContainsUnhedged(reply, "confirmed"));
 
@@ -73,6 +79,10 @@ public class TextMatchTests
     [InlineData("Nunca fue confirmada.", false)]
     [InlineData("Te avisamos cuando esté confirmada.", false)]
     [InlineData("Te avisamos cuando la reserva esté confirmada.", false)]
+    [InlineData("Queda pendiente en lugar de confirmada.", false)]
+    [InlineData("Queda registrada y no confirmada.", false)]
+    [InlineData("Queda pendiente en vez de estar confirmada de inmediato.", false)]
+    [InlineData("En lugar de esperar, tu turno está confirmada.", true)]
     [InlineData("Una vez que la clínica la tenga confirmada te llegará un aviso.", false)]
     [InlineData("Será confirmada por la clínica.", false)]
     [InlineData("Está pendiente de ser confirmada por el negocio.", false)]
