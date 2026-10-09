@@ -7,8 +7,8 @@ See SPEC.md section 5 for the diagram. This file documents what the code does wh
 `POST /api/sessions/{id}/messages` calls `AgentService.RunAsync`, which yields `AgentEvent` records; the endpoint maps each one to an SSE event (`Endpoints/SseWriter.cs`). The model client is built per request, outermost first:
 
 ```
-FunctionInvokingChatClient   runs the tools, at most MaxIterations tool rounds
-  -> (TracingChatClient)     M3: sees every individual model call, so it sits below function invocation
+FunctionInvokingChatClient   runs the tools, at most MaxIterations tool rounds; its FunctionInvoker hook records every tool call
+  -> TracingChatClient       sees every individual model call, so it sits below function invocation
     -> keyed singleton "llm" (FallbackChatClient: primary provider, one retry on the fallback before the first token)
 ```
 
@@ -81,7 +81,89 @@ event: error
 data: {"message":"The assistant is at capacity right now (demo token quota). Please try again in a few minutes.","retryable":true}
 ```
 
-The `trace` event of SPEC 10 is added with the tracing milestone; clients must ignore event names they do not know.
+When a step of the run completes, the server sends a `trace` event (next section). Clients must ignore event names they do not know.
+
+## Trace
+
+Every step of a run is a trace event. One `TraceRecorder` per run (`Agent/Tracing`) allocates their `sequence` (0, 1, 2... in the order the steps complete, no gaps), sanitizes their payloads and keeps the run totals. Events are sent over SSE as soon as the step completes, and stored with the run when it closes (so `/trace` shows a run once it ended; a process killed mid-run leaves its row as `Error` with no events).
+
+| `type` | `name` | `input` | `output` |
+|---|---|---|---|
+| `LlmCall` | model that answered (`unknown` if the call failed before any update) | `{ messageCount, messages: [{ role, text }] }`: the last 4 messages sent, without the leading business system prompt (`messageCount` counts everything), each text clipped to 1000 characters | `{ provider, model, text, toolCalls: ["tool name"], finishReason }` (`text` clipped to 2500 characters), or `{ provider, model, error, status? }` when the call failed or was abandoned |
+| `ToolCall` | tool name | the arguments the model sent | the result the model got, or `{ error: "ExceptionType" }` if the tool threw |
+| `Guardrail` | the rule: `slot_full`, `slot_in_past`, `session_awaiting_human`, `session_closed`, `range_too_long`, `missing_target`, any `invalid_*` (tool rejections, right after their `ToolCall`), or `iteration_limit` (closes a run that hit `MaxIterations`) | `null` (`{ textLength }` for `iteration_limit`) | `{ tool, code, message }` (`{ code, maxIterations }` for `iteration_limit`) |
+| `Handoff` | `handoff_to_human` | `null` | `{ reason, handoffId, alreadyRequested }`, right after the successful `ToolCall` |
+| `Error` | `agent_error` or `agent_cancelled`, the last event of a failed run | `{ textLength }` | `{ error, status? }` or `{ code }` |
+
+An event is `{ runId, sequence, type, name, input, output, tokensIn, tokensOut, durationMs, costUsd }` (camelCase, nulls kept). `tokensIn`, `tokensOut` and `costUsd` are set on `LlmCall` events when the provider reported usage and are `null` on the rest. `costUsd` is `tokens x ModelPricing` of the model that answered that call (0 if the model has no pricing row), rounded to 8 decimals. The provider of a call is `output.provider` (the fallback provider can answer one call and the primary another).
+
+```
+event: trace
+data: {"runId":"019ce9a4-3c1e-7d52-8d0b-2f6a1c0e9b11","sequence":1,"type":"ToolCall","name":"search_catalog","input":{"query":"cleaning"},"output":{"offerings":[...]},"tokensIn":null,"tokensOut":null,"durationMs":14,"costUsd":null}
+
+event: trace
+data: {"runId":"019ce9a4-3c1e-7d52-8d0b-2f6a1c0e9b11","sequence":2,"type":"LlmCall","name":"gemini-3.5-flash-lite","input":{"messageCount":3,"messages":[...]},"output":{"provider":"gemini","model":"gemini-3.5-flash-lite","text":"A cleaning costs...","toolCalls":[],"finishReason":"stop"},"tokensIn":500,"tokensOut":30,"durationMs":820,"costUsd":0.000225}
+```
+
+Order on the stream: a model call is complete when its stream ends, so a run with one tool is `run_started`, `trace` (LlmCall that asked for the tool), `trace` (ToolCall), `token`..., `trace` (final LlmCall), `run_completed`. Steps that finished before a token was produced are always sent before that token; the last LlmCall comes after the last token. A failed run sends its failed `LlmCall` and the closing `Error`/`Guardrail` event before `error`.
+
+Run totals are the sum of the LlmCall events (`run_completed.costUsd` = sum of their `costUsd`).
+
+**Privacy.** What is stored and sent in a trace is sanitized: phone numbers in any string are masked (`+54 11 5555-4444` becomes `+54 11 ****-4444`) and a payload longer than 4096 characters of JSON is replaced by its first 4096 characters as a JSON string ending in `…[truncated]`. The `Booking` table keeps the full phone. See ADR-005.
+
+## Restoring a session
+
+`GET /api/sessions/{id}/messages` (404 for an unknown session) returns what the chat needs after a reload. `Tool` rows are never listed. The text is the stored text (not masked: it is the visitor's own conversation):
+
+```json
+{
+  "messages": [{ "id": "...", "role": "user", "text": "Hi", "createdAt": "2026-10-09T20:15:00+00:00" },
+               { "id": "...", "role": "assistant", "text": "Hello!", "createdAt": "..." }],
+  "sessionStatus": "Active",
+  "language": "en"
+}
+```
+
+`sessionStatus` is `Active`, `AwaitingHuman` or `Closed`; `language` is `en`, `es` or `null` before the first message.
+
+`GET /api/sessions/{id}/trace` (404 for an unknown session) returns the runs of the session by start time, each with its events in `sequence` order (the same JSON as the SSE `trace` event). `provider` lists the providers of the LlmCall events in order of first use; `userMessage` is the message that started the run, with phones masked. A run that is still streaming reads `Error` until it completes.
+
+```json
+{
+  "sessionId": "...",
+  "runs": [{
+    "id": "...", "userMessage": "How much is a cleaning?", "status": "Ok",
+    "model": "gemini-3.5-flash-lite", "provider": "gemini",
+    "tokensIn": 900, "tokensOut": 50, "costUsd": 0.000345, "durationMs": 1630,
+    "startedAt": "2026-10-09T20:15:01+00:00",
+    "events": [{ "runId": "...", "sequence": 0, "type": "LlmCall", "name": "gemini-3.5-flash-lite", "input": {}, "output": {}, "tokensIn": 400, "tokensOut": 20, "durationMs": 700, "costUsd": 0.00017 }]
+  }]
+}
+```
+
+## Admin
+
+`GET /api/admin/bookings?niche=` and `GET /api/admin/handoffs?niche=` need the header `X-Admin-Key` (a demo-grade shared key, compared in constant time). `niche` is `realestate`, `dental` or `restaurant`; missing means all, an unknown id is a 400. Lists are newest first, at most 200 items.
+
+| Status | When |
+|---|---|
+| 200 | Correct key |
+| 401 | Header missing or wrong (problem details) |
+| 503 | `Admin:Key` (`ADMIN_KEY`) is blank: the endpoints are disabled and say so, they never open |
+
+`Admin:MaskPhones` (`ADMIN_MASK_PHONES`, default `true`) masks `customerPhone` in the bookings list; with `false` and the correct key the full number is returned.
+
+```
+curl -H 'X-Admin-Key: $ADMIN_KEY' 'http://localhost:8080/api/admin/bookings?niche=dental'
+[{ "id": "...", "niche": "dental", "sessionId": "...", "status": "PendingConfirmation",
+   "customerName": "Ana Perez", "customerPhone": "+54 11 ****-4444",
+   "slotStartsAt": "2026-10-12T14:00:00+00:00", "offeringName": "Teeth cleaning",
+   "items": null, "total": null, "notes": "First visit", "createdAt": "2026-10-09T20:16:00+00:00" }]
+
+curl -H 'X-Admin-Key: $ADMIN_KEY' 'http://localhost:8080/api/admin/handoffs'
+[{ "id": "...", "niche": "dental", "sessionId": "...", "reason": "customer asked for a person",
+   "summary": "Wants to talk to staff.", "status": "Open", "createdAt": "2026-10-09T20:20:00+00:00" }]
+```
 
 ## Session creation
 

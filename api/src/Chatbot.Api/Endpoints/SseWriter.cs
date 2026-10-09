@@ -24,6 +24,7 @@ internal static class SseWriter
         {
             RunStarted => "run_started",
             Token => "token",
+            Trace => "trace",
             Handoff => "handoff",
             RunCompleted => "run_completed",
             Error => "error",

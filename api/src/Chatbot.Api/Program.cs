@@ -17,6 +17,7 @@ builder.Services.AddCors(o => o.AddPolicy(CorsPolicy, p => p
     .AllowAnyMethod()));
 
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddOptions<AdminOptions>().Bind(builder.Configuration.GetSection(AdminOptions.SectionName));
 
 builder.Services.AddHealthChecks()
     .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
@@ -41,6 +42,8 @@ app.MapHealthChecks("/health/ready", new()
 
 app.MapNicheEndpoints();
 app.MapSessionEndpoints();
+app.MapSessionHistoryEndpoints();
+app.MapAdminEndpoints();
 
 app.Run();
 

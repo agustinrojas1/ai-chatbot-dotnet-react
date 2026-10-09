@@ -25,7 +25,7 @@ public class AgentServiceTests(PostgresFixture postgres)
 
         var run = await world.SingleRunAsync(sessionId);
         Assert.Equal(
-            [typeof(RunStarted), typeof(Token), typeof(Token), typeof(Token), typeof(RunCompleted)],
+            [typeof(RunStarted), typeof(Token), typeof(Token), typeof(Token), typeof(Trace), typeof(RunCompleted)],
             events.Select(e => e.GetType()));
         Assert.Equal(run.Id, Assert.IsType<RunStarted>(events[0]).RunId);
         Assert.Equal(["Hola, ", "¿en qué ", "puedo ayudarte?"], events.OfType<Token>().Select(t => t.Text));
@@ -196,10 +196,11 @@ public class AgentServiceTests(PostgresFixture postgres)
 
         var events = await world.RunAsync(sessionId, "I want to talk to a person");
 
+        // The model call that asked for the tool, the tool and the handoff come first; the final call completes with its stream.
         Assert.Equal(
-            [typeof(RunStarted), typeof(Token), typeof(Handoff), typeof(RunCompleted)],
+            [typeof(RunStarted), typeof(Trace), typeof(Trace), typeof(Trace), typeof(Token), typeof(Trace), typeof(Handoff), typeof(RunCompleted)],
             events.Select(e => e.GetType()));
-        Assert.Equal("customer asked for a person", Assert.IsType<Handoff>(events[2]).Reason);
+        Assert.Equal("customer asked for a person", events.OfType<Handoff>().Single().Reason);
 
         await using var db = world.NewDb();
         Assert.Equal(SessionStatus.AwaitingHuman, (await db.ChatSessions.SingleAsync(s => s.Id == sessionId)).Status);
@@ -215,8 +216,8 @@ public class AgentServiceTests(PostgresFixture postgres)
 
         var events = await world.RunAsync(sessionId, "hello there");
 
-        Assert.Equal([typeof(RunStarted), typeof(Error)], events.Select(e => e.GetType()));
-        var error = Assert.IsType<Error>(events[1]);
+        Assert.Equal([typeof(RunStarted), typeof(Trace), typeof(Trace), typeof(Error)], events.Select(e => e.GetType()));
+        var error = Assert.IsType<Error>(events[^1]);
         Assert.True(error.Retryable);
         Assert.DoesNotContain("secret-key", error.Message);
 
@@ -224,7 +225,10 @@ public class AgentServiceTests(PostgresFixture postgres)
         Assert.Equal(AgentRunStatus.Error, run.Status);
         Assert.True(run.DurationMs > 0);
 
-        var trace = Assert.Single(await world.TraceAsync(run.Id));
+        // The failed model call, then the failure itself.
+        var traced = await world.TraceAsync(run.Id);
+        Assert.Equal([TraceEventType.LlmCall, TraceEventType.Error], traced.Select(e => e.Type));
+        var trace = traced[^1];
         Assert.Equal((TraceEventType.Error, "agent_error"), (trace.Type, trace.Name));
         Assert.Equal(503, trace.Output!.Value.GetProperty("status").GetInt32());
         Assert.DoesNotContain("secret-key", trace.Output.Value.GetRawText());
@@ -266,7 +270,7 @@ public class AgentServiceTests(PostgresFixture postgres)
 
         var run = await world.SingleRunAsync(sessionId);
         Assert.Equal(AgentRunStatus.Error, run.Status);
-        var trace = Assert.Single(await world.TraceAsync(run.Id));
+        var trace = (await world.TraceAsync(run.Id)).Last();
         Assert.Equal((TraceEventType.Guardrail, "iteration_limit"), (trace.Type, trace.Name));
         Assert.Equal(maxIterations, trace.Output!.Value.GetProperty("maxIterations").GetInt32());
     }
@@ -363,8 +367,8 @@ public class AgentServiceTests(PostgresFixture postgres)
 
         var events = await world.RunAsync(sessionId, "I want a person");
 
-        Assert.Equal([typeof(RunStarted), typeof(Handoff), typeof(Error)], events.Select(e => e.GetType()));
-        Assert.Equal("wants a person", Assert.IsType<Handoff>(events[1]).Reason);
+        Assert.Equal([typeof(RunStarted), typeof(Handoff), typeof(Error)], events.Where(e => e is not Trace).Select(e => e.GetType()));
+        Assert.Equal("wants a person", events.OfType<Handoff>().Single().Reason);
 
         await using var db = world.NewDb();
         Assert.Equal(SessionStatus.AwaitingHuman, (await db.ChatSessions.SingleAsync(s => s.Id == sessionId)).Status);
@@ -544,7 +548,7 @@ public class AgentServiceTests(PostgresFixture postgres)
         Assert.Equal([typeof(RunStarted), typeof(Token)], events.Select(e => e.GetType()));
         var run = await world.SingleRunAsync(sessionId);
         Assert.Equal(AgentRunStatus.Error, run.Status);
-        Assert.Equal("agent_cancelled", Assert.Single(await world.TraceAsync(run.Id)).Name);
+        Assert.Equal(["LlmCall", "agent_cancelled"], (await world.TraceAsync(run.Id)).Select(e => e.Type == TraceEventType.LlmCall ? "LlmCall" : e.Name));
         Assert.Equal([MessageRole.User], (await world.MessagesAsync(sessionId)).Select(m => m.Role));
     }
 
@@ -566,7 +570,7 @@ public class AgentServiceTests(PostgresFixture postgres)
 
         var run = await world.SingleRunAsync(sessionId);
         Assert.Equal(AgentRunStatus.Error, run.Status);
-        Assert.Equal("agent_cancelled", Assert.Single(await world.TraceAsync(run.Id)).Name);
+        Assert.Equal(["LlmCall", "agent_cancelled"], (await world.TraceAsync(run.Id)).Select(e => e.Type == TraceEventType.LlmCall ? "LlmCall" : e.Name));
     }
 
     private static async Task AssertNothingStoredAsync(AgentWorld world, Guid sessionId, ScriptedChatClient llm)

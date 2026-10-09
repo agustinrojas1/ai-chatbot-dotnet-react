@@ -30,6 +30,7 @@ services:
       Llm__Fallback__ApiKey: ${LLM_FALLBACK_API_KEY:-}
       Llm__Fallback__Model: ${LLM_FALLBACK_MODEL:-}
       Admin__Key: ${ADMIN_KEY:-}
+      Admin__MaskPhones: ${ADMIN_MASK_PHONES:-true}
     depends_on:
       postgres:
         condition: service_healthy

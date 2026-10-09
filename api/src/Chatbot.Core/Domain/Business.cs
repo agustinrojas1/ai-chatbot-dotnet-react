@@ -149,6 +149,10 @@ public class TraceEvent
     public JsonElement? Output { get; set; }
     public int? TokensIn { get; set; }
     public int? TokensOut { get; set; }
+
+    /// <summary>Cost of this event in USD (tokens x <see cref="ModelPricing"/>); set on <c>LlmCall</c> events, null on the rest.</summary>
+    public decimal? CostUsd { get; set; }
+
     public int DurationMs { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

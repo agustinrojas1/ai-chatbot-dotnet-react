@@ -1,10 +1,9 @@
-using System.ClientModel;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Text.Json;
 using Chatbot.Core.Agent;
 using Chatbot.Core.Domain;
 using Chatbot.Infrastructure.Agent.Tools;
+using Chatbot.Infrastructure.Agent.Tracing;
 using Chatbot.Infrastructure.Llm;
 using Chatbot.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -37,8 +36,9 @@ public sealed class AgentService(
 
     /// <summary>
     /// Processes <paramref name="text"/> in the session. The stream is either a single <see cref="Rejected"/>
-    /// (nothing was stored), or <see cref="RunStarted"/>, <see cref="Token"/>s, an optional <see cref="Handoff"/>
-    /// and <see cref="RunCompleted"/>, or the same up to <see cref="Error"/>. Provider and tool failures never
+    /// (nothing was stored), or <see cref="RunStarted"/>, <see cref="Token"/>s and <see cref="Trace"/>s interleaved
+    /// (each step is sent as soon as it completes), an optional <see cref="Handoff"/> and <see cref="RunCompleted"/>,
+    /// or the same up to <see cref="Error"/>. Provider and tool failures never
     /// escape as exceptions. If the caller cancels or stops enumerating, the run is closed as <c>Error</c>.
     /// </summary>
     public async IAsyncEnumerable<AgentEvent> RunAsync(
@@ -107,8 +107,12 @@ public sealed class AgentService(
                     yield break;
 
                 logger.LogError(failure, "Agent run {RunId} failed", run.Id);
-                run.PendingFailure = FailureTraceFor(failure!);
+                RecordFailure(run, FailureTraceFor(failure!));
                 await TryFailAsync(run);
+
+                // The failed model call (if any) and the failure itself, which were recorded after the last drain.
+                foreach (var traced in run.Recorder.TakeNew())
+                    yield return Trace.From(traced);
 
                 // A tool may already have handed the session to a person: the client still needs to show that.
                 if (run.Tools.HandoffReason is { } handoffReason)
@@ -137,7 +141,7 @@ public sealed class AgentService(
     /// the wrappers are cheap and per request. They are never disposed, because a delegating client disposes the
     /// client below it, which here is the shared singleton.
     /// </summary>
-    private IChatClient BuildPipeline() =>
+    private IChatClient BuildPipeline(RunState run) =>
         new ChatClientBuilder(llm)
             // Verified against Microsoft.Extensions.AI 10.10 (see the iteration limit test): the limit counts tool
             // rounds, so N allows N rounds of tool calls plus the model call that follows the last one (N + 1 calls
@@ -149,14 +153,18 @@ public sealed class AgentService(
             // runs) does not end the run: the exception becomes the tool result so the model can correct itself, up
             // to MaximumConsecutiveErrorsPerRequest rounds in a row, then it is rethrown. IncludeDetailedErrors puts
             // the exception text in that result. It reaches only the model; the user stream gets a generic message.
+            //
+            // FunctionInvoker replaces the call of each tool, which is where ToolCall events are recorded.
             .UseFunctionInvocation(configure: client =>
             {
                 client.MaximumIterationsPerRequest = options.Value.MaxIterations;
                 client.MaximumConsecutiveErrorsPerRequest = MaxConsecutiveToolErrors;
                 client.IncludeDetailedErrors = true;
+                client.FunctionInvoker = new ToolCallTracer(run.Recorder).InvokeAsync;
             })
-            // M3: add TracingChatClient here. ChatClientBuilder wraps in call order (first Use = outermost), so a
-            // `.Use(...)` placed below UseFunctionInvocation sees every individual model call.
+            // ChatClientBuilder wraps in call order (first Use = outermost), so a `.Use(...)` placed below
+            // UseFunctionInvocation sees every individual model call.
+            .Use(inner => new TracingChatClient(inner, run.Recorder))
             .Build();
 
     private async Task<Prepared> PrepareAsync(Guid sessionId, string? text, CancellationToken ct)
@@ -208,7 +216,8 @@ public sealed class AgentService(
 
         var tools = new ToolContext(business.Id, session.Id, business.Timezone);
         var pricing = await db.ModelPricings.AsNoTracking().ToDictionaryAsync(p => p.Model, ct);
-        return Prepared.Accept(new RunState(agentRun.Id, session.Id, messages, tools, pricing, clock.GetTimestamp(), text.Length));
+        var recorder = new TraceRecorder(agentRun.Id, pricing, clock);
+        return Prepared.Accept(new RunState(agentRun.Id, session.Id, messages, tools, recorder, clock.GetTimestamp(), text.Length));
     }
 
     /// <summary>
@@ -247,17 +256,19 @@ public sealed class AgentService(
             MaxOutputTokens = options.Value.MaxOutputTokens,
         };
 
-        await foreach (var update in BuildPipeline().GetStreamingResponseAsync(run.Messages, chatOptions, ct))
+        await foreach (var update in BuildPipeline(run).GetStreamingResponseAsync(run.Messages, chatOptions, ct))
         {
+            // Steps that completed before this update was produced (a model call that ended, a tool that ran) go
+            // out first, so a ToolCall is always seen before the tokens of the answer that follows it.
+            foreach (var traced in run.Recorder.TakeNew())
+                yield return Trace.From(traced);
+
             run.Observe(update);
 
             foreach (var content in update.Contents)
             {
                 switch (content)
                 {
-                    case UsageContent usage:
-                        run.AddUsage(usage.Details);
-                        break;
                     case FunctionCallContent call:
                         run.PendingCalls[call.CallId] = call;
                         break;
@@ -274,6 +285,10 @@ public sealed class AgentService(
                 yield return new Token(text);
             }
         }
+
+        // The last model call completes when its stream ends.
+        foreach (var traced in run.Recorder.TakeNew())
+            yield return Trace.From(traced);
 
         if (run.PendingCalls.Count > 0)
             throw new AgentRunException("iteration_limit", "I couldn't finish that request. Please try rephrasing it or splitting it in smaller steps.", retryable: false);
@@ -296,6 +311,7 @@ public sealed class AgentService(
             CreatedAt = next,
         });
 
+        db.TraceEvents.AddRange(run.Recorder.Events);
         var agentRun = await db.AgentRuns.FirstAsync(r => r.Id == run.Id);
         var summary = Close(agentRun, AgentRunStatus.Ok, run);
         await db.ChatSessions.Where(s => s.Id == run.SessionId)
@@ -303,11 +319,11 @@ public sealed class AgentService(
         await db.SaveChangesAsync();
         run.Closed = true;
 
-        return new RunCompleted(run.Id, run.TokensIn, run.TokensOut, run.CostUsd, summary.DurationMs, summary.Model, summary.Provider);
+        return new RunCompleted(run.Id, run.Recorder.TokensIn, run.Recorder.TokensOut, run.Recorder.CostUsd, summary.DurationMs, summary.Model, summary.Provider);
     }
 
-    /// <summary>Closes the run as <c>Error</c> with one trace event for the failure (an <c>Error</c>, or a <c>Guardrail</c> for a limit).</summary>
-    private async Task FailAsync(RunState run, FailureTrace failure)
+    /// <summary>Closes the run as <c>Error</c> and stores its trace, which ends with the event of the failure (an <c>Error</c>, or a <c>Guardrail</c> for a limit).</summary>
+    private async Task FailAsync(RunState run)
     {
         // A failed tool call may have left half-saved entities in the shared context.
         db.ChangeTracker.Clear();
@@ -315,23 +331,22 @@ public sealed class AgentService(
         // Tools that already ran keep their effects (a booking, a handoff): the next turn must know about them.
         AddToolMessages(run, clock.GetUtcNow(), out _);
 
-        var agentRun = await db.AgentRuns.FirstAsync(r => r.Id == run.Id);
-        var summary = Close(agentRun, AgentRunStatus.Error, run);
+        if (!run.FailureRecorded)
+            RecordFailure(run, new FailureTrace(TraceEventType.Error, "agent_cancelled", new { reason = "client_disconnected" }));
 
-        var lastSequence = await db.TraceEvents.Where(e => e.RunId == run.Id).MaxAsync(e => (int?)e.Sequence);
-        db.TraceEvents.Add(new TraceEvent
-        {
-            RunId = run.Id,
-            Sequence = (lastSequence ?? -1) + 1,
-            Type = failure.Type,
-            Name = failure.Name,
-            Input = JsonSerializer.SerializeToElement(new { textLength = run.InputLength }),
-            Output = JsonSerializer.SerializeToElement(failure.Output),
-            DurationMs = summary.DurationMs,
-            CreatedAt = clock.GetUtcNow(),
-        });
+        var agentRun = await db.AgentRuns.FirstAsync(r => r.Id == run.Id);
+        Close(agentRun, AgentRunStatus.Error, run);
+        db.TraceEvents.AddRange(run.Recorder.Events);
         await db.SaveChangesAsync();
         run.Closed = true;
+    }
+
+    /// <summary>Adds the closing event of a failed run to the trace, in sequence after every step that completed.</summary>
+    private void RecordFailure(RunState run, FailureTrace failure)
+    {
+        run.FailureRecorded = true;
+        run.Recorder.Record(failure.Type, failure.Name, new { textLength = run.InputLength }, failure.Output,
+            durationMs: run.Recorder.Elapsed(run.StartTimestamp));
     }
 
     /// <summary>Closes the run as failed, or as cancelled if no failure was recorded. Never throws: nobody could handle it.</summary>
@@ -339,7 +354,7 @@ public sealed class AgentService(
     {
         try
         {
-            await FailAsync(run, run.PendingFailure ?? new FailureTrace(TraceEventType.Error, "agent_cancelled", new { reason = "client_disconnected" }));
+            await FailAsync(run);
         }
         catch (Exception ex)
         {
@@ -375,9 +390,9 @@ public sealed class AgentService(
 
         agentRun.Status = status;
         agentRun.Model = model.Length <= ModelColumnLength ? model : model[..ModelColumnLength];
-        agentRun.TokensIn = (int)Math.Min(run.TokensIn, int.MaxValue);
-        agentRun.TokensOut = (int)Math.Min(run.TokensOut, int.MaxValue);
-        agentRun.CostUsd = run.CostUsd;
+        agentRun.TokensIn = (int)Math.Min(run.Recorder.TokensIn, int.MaxValue);
+        agentRun.TokensOut = (int)Math.Min(run.Recorder.TokensOut, int.MaxValue);
+        agentRun.CostUsd = run.Recorder.CostUsd;
         agentRun.DurationMs = duration;
         return (model, run.ProviderLabel, duration);
     }
@@ -400,9 +415,7 @@ public sealed class AgentService(
         AgentRunException { Code: "iteration_limit" } e =>
             new(TraceEventType.Guardrail, e.Code, new { code = e.Code, maxIterations = options.Value.MaxIterations }),
         AgentRunException e => new(TraceEventType.Error, "agent_error", new { code = e.Code }),
-        ClientResultException e => new(TraceEventType.Error, "agent_error", new { error = e.GetType().Name, status = e.Status }),
-        HttpRequestException e => new(TraceEventType.Error, "agent_error", new { error = e.GetType().Name, status = (int?)e.StatusCode }),
-        _ => new(TraceEventType.Error, "agent_error", new { error = ex.GetType().Name }),
+        _ => new(TraceEventType.Error, "agent_error", TraceRecorder.DescribeFailure(ex)),
     };
 
     private static Language? ParseLanguage(string? code) => code switch
@@ -425,7 +438,7 @@ public sealed class AgentService(
     /// <summary>Everything one run accumulates: context sent to the model, usage, cost, answer text and bookkeeping.</summary>
     private sealed class RunState(
         Guid id, Guid sessionId, List<AiMessage> messages, ToolContext tools,
-        Dictionary<string, ModelPricing> pricing, long startTimestamp, int inputLength)
+        TraceRecorder recorder, long startTimestamp, int inputLength)
     {
         public Guid Id { get; } = id;
         public Guid SessionId { get; } = sessionId;
@@ -435,11 +448,7 @@ public sealed class AgentService(
         public int InputLength { get; } = inputLength;
 
         public StringBuilder Answer { get; } = new();
-        public long TokensIn { get; private set; }
-        public long TokensOut { get; private set; }
-
-        /// <summary>Sum of the cost of every model call, each priced with the model that answered it.</summary>
-        public decimal CostUsd { get; private set; }
+        public TraceRecorder Recorder { get; } = recorder;
 
         /// <summary>Function calls seen without a result yet. Not empty at the end means the iteration limit cut the loop.</summary>
         public Dictionary<string, FunctionCallContent> PendingCalls { get; } = [];
@@ -447,8 +456,8 @@ public sealed class AgentService(
         /// <summary>Tool calls that ran, with their results, in order.</summary>
         public List<ToolExchange> Exchanges { get; } = [];
 
-        /// <summary>Set when the run failed but could not be closed yet, so the last attempt (in <c>finally</c>) records the real cause.</summary>
-        public FailureTrace? PendingFailure { get; set; }
+        /// <summary>True once the closing event of a failed run is in the trace, so it is recorded once.</summary>
+        public bool FailureRecorded { get; set; }
 
         /// <summary>True once the run row was written as Ok or Error. Before that the row says Error.</summary>
         public bool Closed { get; set; }
@@ -456,7 +465,6 @@ public sealed class AgentService(
         // FallbackChatClient falls back per model call, so one run can be answered by several models.
         private readonly List<string> _models = [];
         private readonly List<string> _providers = [];
-        private string? _currentModel;
 
         /// <summary>Models that answered, in order of first use, comma separated. A single name unless a fallback kicked in.</summary>
         public string ModelLabel => _models.Count == 0 ? UnknownModel : string.Join(", ", _models);
@@ -472,18 +480,9 @@ public sealed class AgentService(
             var model = update.AdditionalProperties?.GetValueOrDefault(FallbackChatClient.ModelKey) as string ?? update.ModelId;
             if (model is not null)
             {
-                _currentModel = model;
                 if (!_models.Contains(model))
                     _models.Add(model);
             }
-        }
-
-        public void AddUsage(UsageDetails usage)
-        {
-            long tokensIn = usage.InputTokenCount ?? 0, tokensOut = usage.OutputTokenCount ?? 0;
-            TokensIn += tokensIn;
-            TokensOut += tokensOut;
-            CostUsd += CostCalculator.Compute(_currentModel is null ? null : pricing.GetValueOrDefault(_currentModel), tokensIn, tokensOut);
         }
     }
 

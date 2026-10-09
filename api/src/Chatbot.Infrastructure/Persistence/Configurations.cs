@@ -150,6 +150,7 @@ internal sealed class TraceEventConfiguration : IEntityTypeConfiguration<TraceEv
         b.Property(x => x.Name).HasMaxLength(200).IsRequired();
         b.Property(x => x.Input).HasColumnType("jsonb");
         b.Property(x => x.Output).HasColumnType("jsonb");
+        b.Property(x => x.CostUsd).HasPrecision(18, 8);
         b.HasOne<AgentRun>().WithMany(r => r.Events).HasForeignKey(x => x.RunId).OnDelete(DeleteBehavior.Cascade);
         b.HasIndex(x => new { x.RunId, x.Sequence }).IsUnique();
     }

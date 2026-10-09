@@ -52,7 +52,7 @@ public class MessageEndpointTests(PostgresFixture postgres)
         Assert.Equal("no", Assert.Single(response.Headers.GetValues("X-Accel-Buffering")));
 
         var events = SseEvent.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(["run_started", "token", "token", "run_completed"], events.Select(e => e.Name));
+        Assert.Equal(["run_started", "token", "token", "trace", "run_completed"], events.Select(e => e.Name));
 
         var runId = events[0].Data.GetProperty("runId").GetGuid();
         Assert.Equal(["Hello ", "there!"], events.Where(e => e.Name == "token").Select(e => e.Data.GetProperty("text").GetString()));
@@ -82,8 +82,8 @@ public class MessageEndpointTests(PostgresFixture postgres)
         var response = await factory.CreateClient().PostAsJsonAsync($"/api/sessions/{sessionId}/messages", new { text = "I want a person" });
 
         var events = SseEvent.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(["run_started", "token", "handoff", "run_completed"], events.Select(e => e.Name));
-        Assert.Equal("wants a person", events[2].Data.GetProperty("reason").GetString());
+        Assert.Equal(["run_started", "trace", "trace", "trace", "token", "trace", "handoff", "run_completed"], events.Select(e => e.Name));
+        Assert.Equal("wants a person", events.Single(e => e.Name == "handoff").Data.GetProperty("reason").GetString());
     }
 
     [Fact]
@@ -98,9 +98,9 @@ public class MessageEndpointTests(PostgresFixture postgres)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var events = SseEvent.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(["run_started", "error"], events.Select(e => e.Name));
-        Assert.True(events[1].Data.GetProperty("retryable").GetBoolean());
-        Assert.False(string.IsNullOrWhiteSpace(events[1].Data.GetProperty("message").GetString()));
+        Assert.Equal(["run_started", "trace", "trace", "error"], events.Select(e => e.Name));
+        Assert.True(events[^1].Data.GetProperty("retryable").GetBoolean());
+        Assert.False(string.IsNullOrWhiteSpace(events[^1].Data.GetProperty("message").GetString()));
         Assert.Equal(AgentRunStatus.Error, (await world.SingleRunAsync(sessionId)).Status);
     }
 

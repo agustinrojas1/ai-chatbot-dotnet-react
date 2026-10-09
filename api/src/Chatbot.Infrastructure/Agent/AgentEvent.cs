@@ -1,3 +1,7 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Chatbot.Core.Domain;
+
 namespace Chatbot.Infrastructure.Agent;
 
 /// <summary>
@@ -23,6 +27,26 @@ public sealed record RunStarted(Guid RunId) : AgentEvent;
 
 /// <summary>A piece of the assistant answer, in the order the model produced it.</summary>
 public sealed record Token(string Text) : AgentEvent;
+
+/// <summary>
+/// One step of the run (model call, tool call, guardrail, handoff or error), sent as soon as it completes. It is also the
+/// shape of the events in <c>GET /api/sessions/{id}/trace</c>, so the live panel and a reloaded one read the same JSON.
+/// </summary>
+public sealed record Trace(
+    Guid RunId,
+    int Sequence,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<TraceEventType>))] TraceEventType Type,
+    string Name,
+    JsonElement? Input,
+    JsonElement? Output,
+    int? TokensIn,
+    int? TokensOut,
+    int DurationMs,
+    decimal? CostUsd) : AgentEvent
+{
+    public static Trace From(TraceEvent e) =>
+        new(e.RunId, e.Sequence, e.Type, e.Name, e.Input, e.Output, e.TokensIn, e.TokensOut, e.DurationMs, e.CostUsd);
+}
 
 /// <summary>The session moved to <c>AwaitingHuman</c> during this run.</summary>
 public sealed record Handoff(string Reason) : AgentEvent;
