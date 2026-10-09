@@ -1,4 +1,5 @@
 using Chatbot.Api.Endpoints;
+using Chatbot.Api.Security;
 using Chatbot.Infrastructure;
 using Chatbot.Infrastructure.Persistence;
 using Chatbot.Infrastructure.Seeding;
@@ -6,16 +7,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 
-const string CorsPolicy = "Frontend";
-
 var builder = WebApplication.CreateBuilder(args);
 
-var allowedOrigin = builder.Configuration["Cors:AllowedOrigin"] ?? "http://localhost:5173";
-builder.Services.AddCors(o => o.AddPolicy(CorsPolicy, p => p
-    .WithOrigins(allowedOrigin)
-    .AllowAnyHeader()
-    .AllowAnyMethod()));
-
+builder.Services.AddAbuseProtection();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddOptions<AdminOptions>().Bind(builder.Configuration.GetSection(AdminOptions.SectionName));
 
@@ -32,7 +26,10 @@ if (app.Environment.IsDevelopment())
     await scope.ServiceProvider.GetRequiredService<IDatabaseSeeder>().SeedAsync(CancellationToken.None);
 }
 
-app.UseCors(CorsPolicy);
+if (!app.Environment.IsDevelopment())
+    StartupChecks.WarnAboutMissingSecrets(app.Logger, app.Configuration);
+
+app.UseAbuseProtection();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapHealthChecks("/health/ready", new()

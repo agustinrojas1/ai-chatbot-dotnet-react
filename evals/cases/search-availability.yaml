@@ -1,0 +1,88 @@
+# Catalog search with filters and availability. Prices come from the seed (docs/seed-notes.md).
+
+- id: search-realestate-rent-palermo-budget
+  category: search
+  niche: realestate
+  turns:
+    - "Show me 2-room apartments for rent in Palermo, under $600 a month"
+  expectLanguage: en
+  expectToolCalls:
+    - name: search_catalog
+      args:
+        maxPrice: 600
+  forbidToolCalls: [create_booking, handoff_to_human]
+  mustMention:
+    - "550"
+  # The only match is the 2-room apartment in Palermo (550/month); the Caballito one (780) is over budget.
+  forbidPhrases: ["780"]
+
+- id: search-realestate-buy-house-pool
+  category: search
+  niche: realestate
+  turns:
+    - "I want to buy a house with a swimming pool"
+  expectLanguage: en
+  expectToolCalls:
+    - name: search_catalog
+  mustMention:
+    - "Belgrano"
+    - fromTool: search_catalog
+      path: "results[*].price"
+
+- id: search-restaurant-vegetarian-cheap
+  category: search
+  niche: restaurant
+  turns:
+    - "What vegetarian options do you have under $10?"
+  expectLanguage: en
+  expectToolCalls:
+    - name: search_catalog
+  mustMention:
+    - anyOf: ["Caprese", "Garlic Bread", "Tiramisu", "Limonata"]
+
+- id: search-restaurant-gluten-free-crust
+  category: search
+  niche: restaurant
+  turns:
+    - "Do you have gluten-free pizza? How much extra is it?"
+  expectLanguage: en
+  expectToolCalls:
+    - name: search_catalog
+  mustMention:
+    - "2"
+  rubric: Any pizza accepts a gluten-free crust for +$2 (catalog attributes and persona facts).
+
+- id: avail-dental-tomorrow-morning
+  category: availability
+  niche: dental
+  turns:
+    - "Do you have any appointments available tomorrow morning?"
+  expectLanguage: en
+  expectToolCalls:
+    - name: check_availability
+  forbidToolCalls: [create_booking]
+  forbidBooking: true
+  rubric: Tomorrow can be a Sunday (the clinic is closed); then the bot must say there are no slots instead of inventing times.
+
+- id: avail-es-realestate-saturday-afternoon
+  category: availability
+  niche: realestate
+  turns:
+    - "¿Tienen visitas disponibles el sábado a la tarde?"
+  expectLanguage: es
+  expectToolCalls:
+    - name: check_availability
+  forbidToolCalls: [create_booking]
+  forbidBooking: true
+
+- id: avail-restaurant-delivery-tomorrow-evening
+  category: availability
+  niche: restaurant
+  turns:
+    - "Can I get a delivery tomorrow evening? Which windows are open?"
+  expectLanguage: en
+  expectToolCalls:
+    - name: check_availability
+      args:
+        partOfDay: evening
+  forbidToolCalls: [create_booking]

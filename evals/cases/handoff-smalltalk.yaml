@@ -1,0 +1,93 @@
+# Things outside the catalog, requests for a person, and messages that must NOT trigger a handoff.
+
+- id: notcat-dental-braces-then-handoff
+  category: not_in_catalog
+  niche: dental
+  turns:
+    - say: "How much are braces?"
+      expectToolCalls:
+        - name: search_catalog
+      # The rule is "offer first, hand off when the customer accepts".
+      forbidToolCalls: [handoff_to_human]
+      mustMention:
+        - anyOf: ["person", "human", "team", "staff", "someone", "colleague", "receptionist"]
+    - say: "Yes please, connect me with someone."
+      expectToolCalls:
+        - name: handoff_to_human
+  expectLanguage: en
+  expectHandoff: true
+  forbidPhrases: ["braces cost $", "braces are $", "braces start at", "braces from $"]
+  rubric: Orthodontics is deliberately missing from the seed. The bot must not invent a price.
+
+- id: notcat-restaurant-sushi-es
+  category: not_in_catalog
+  niche: restaurant
+  turns:
+    - "¿Tienen sushi o ramen?"
+  expectLanguage: es
+  expectToolCalls:
+    - name: search_catalog
+  forbidToolCalls: [create_booking]
+  forbidPhrases: ["tenemos sushi", "tenemos ramen", "nuestro sushi", "nuestro ramen"]
+  mustMention:
+    - anyOf: ["pizza", "pasta", "menú"]
+
+- id: notcat-realestate-commercial-en
+  category: not_in_catalog
+  niche: realestate
+  turns:
+    - "Do you have commercial office space or warehouses for rent?"
+  expectLanguage: en
+  expectToolCalls:
+    - name: search_catalog
+  forbidToolCalls: [create_booking]
+  forbidPhrases: ["we have a warehouse", "we have office space", "we do have commercial"]
+  mustMention:
+    - anyOf: ["person", "human", "team", "agent", "colleague", "someone"]
+
+- id: handoff-explicit-request-en-dental
+  category: handoff
+  niche: dental
+  turns:
+    - "I'd like to talk to a real person, please."
+  expectLanguage: en
+  expectToolCalls:
+    - name: handoff_to_human
+  expectHandoff: true
+  mustMention:
+    - anyOf: ["person", "team", "someone", "staff", "colleague", "receptionist"]
+
+- id: handoff-es-awaiting-human-realestate
+  category: handoff
+  niche: realestate
+  turns:
+    - say: "Quiero hablar con una persona, no con un bot."
+      expectToolCalls:
+        - name: handoff_to_human
+      expectHandoff: true
+    - say: "Igual quiero reservar una visita para mañana a las 11."
+      # With the session in AwaitingHuman the bot starts no new flow (SPEC 7.2).
+      forbidToolCalls: [create_booking]
+      forbidBooking: true
+      mustMention:
+        - anyOf: ["persona", "equipo", "alguien"]
+  expectLanguage: es
+
+- id: smalltalk-en-restaurant
+  category: smallTalk
+  niche: restaurant
+  turns:
+    - "Hey! How's your day going?"
+    - "Haha nice, thanks!"
+  expectLanguage: en
+  forbidToolCalls: [handoff_to_human, create_booking]
+  expectHandoff: false
+
+- id: smalltalk-es-dental
+  category: smallTalk
+  niche: dental
+  turns:
+    - "Hola, ¿cómo estás? ¿Qué tal tu día?"
+  expectLanguage: es
+  forbidToolCalls: [handoff_to_human, create_booking]
+  expectHandoff: false

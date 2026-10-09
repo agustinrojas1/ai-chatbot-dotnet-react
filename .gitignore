@@ -18,3 +18,7 @@ dist/
 .vs/
 .idea/
 .vscode/
+
+# Eval reports are generated; the folder stays
+evals/results/*
+!evals/results/.gitkeep

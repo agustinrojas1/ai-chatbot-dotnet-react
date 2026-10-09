@@ -22,7 +22,10 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IDatabaseSeeder, DatabaseSeeder>();
         services.AddLlm(configuration);
-        services.AddOptions<AgentOptions>().Bind(configuration.GetSection(AgentOptions.SectionName));
+        services.AddOptions<AgentOptions>()
+            .Bind(configuration.GetSection(AgentOptions.SectionName))
+            .Validate(AgentOptions.IsValid, "Every Agent limit (MaxInputChars, MaxHistoryMessages, MaxIterations, MaxOutputTokens) must be greater than zero.")
+            .ValidateOnStart();
         services.AddScoped<AgentService>();
 
         return services;

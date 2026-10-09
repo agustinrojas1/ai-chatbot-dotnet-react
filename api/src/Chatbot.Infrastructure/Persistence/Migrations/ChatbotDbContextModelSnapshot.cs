@@ -63,6 +63,8 @@ namespace Chatbot.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("StartedAt");
+
                     b.HasIndex("UserMessageId");
 
                     b.HasIndex("SessionId", "StartedAt");

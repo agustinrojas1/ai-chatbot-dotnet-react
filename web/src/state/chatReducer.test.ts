@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Niche, TraceEvent, TraceResponse } from '../api/types'
 import {
   canSend,
+  canType,
   chatReducer,
   HANDOFF_TEXT,
   initialChatState,
@@ -301,5 +302,74 @@ describe('chatReducer', () => {
     expect(state.language).toBe('en')
     expect(state.lastUserText).toBe('hello')
     expect(canSend(state)).toBe(false)
+  })
+})
+
+function traceRun(id: string, status: 'Ok' | 'Error', events: TraceEvent[]): TraceResponse['runs'][number] {
+  return {
+    id,
+    userMessage: `message ${id}`,
+    status,
+    model: 'm',
+    provider: 'p',
+    tokensIn: 10,
+    tokensOut: 5,
+    costUsd: 0.01,
+    durationMs: 100,
+    startedAt: AT,
+    events,
+  }
+}
+
+describe('trace hydration', () => {
+  it('trace_hydrated adds the runs the page lacks, oldest first, and maps run status', () => {
+    const live = run(
+      [sent('live'), { type: 'run_started', runId: 'live-run', at: AT }, { type: 'trace', event: trace('live-run', 0), at: AT }],
+      ready,
+    )
+    const state = chatReducer(live, {
+      type: 'trace_hydrated',
+      trace: {
+        sessionId: 's1',
+        runs: [
+          traceRun('old-ok', 'Ok', [trace('old-ok', 1), trace('old-ok', 0)]),
+          traceRun('old-bad', 'Error', [trace('old-bad', 0, { type: 'Error', name: 'agent_error' })]),
+          traceRun('live-run', 'Error', []),
+        ],
+      },
+    })
+    expect(state.runs.map((r) => r.runId)).toEqual(['old-ok', 'old-bad', 'live-run'])
+    expect(state.runs[0]).toMatchObject({ status: 'ok', info: { costUsd: 0.01, model: 'm' } })
+    expect(state.runs[0].events.map((e) => e.sequence)).toEqual([0, 1])
+    expect(state.runs[1]).toMatchObject({ status: 'error', info: null })
+    // The in-flight run is local truth: the server still reads it as Error until it completes.
+    expect(state.runs[2]).toMatchObject({ status: 'running' })
+    expect(state.runs[2].events).toHaveLength(1)
+  })
+
+  it('trace_hydrated with nothing new returns the same state', () => {
+    const state = run([{ type: 'trace_hydrated', trace: { sessionId: 's1', runs: [] } }], ready)
+    expect(state).toBe(ready)
+  })
+
+  it('a restored past session is read-only and may lack a niche', () => {
+    const state = run(
+      [
+        {
+          type: 'session_restored',
+          sessionId: 'past',
+          nicheId: null,
+          stored: { messages: [], sessionStatus: 'Active', language: null },
+          trace: { sessionId: 'past', runs: [traceRun('r9', 'Ok', [trace('r9', 0)])] },
+          readOnly: true,
+        },
+      ],
+      initialChatState,
+    )
+    expect(state.readOnly).toBe(true)
+    expect(state.nicheId).toBeNull()
+    expect(state.runs).toHaveLength(1)
+    expect(canSend(state)).toBe(false)
+    expect(canType(state)).toBe(false)
   })
 })

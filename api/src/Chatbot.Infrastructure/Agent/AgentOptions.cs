@@ -16,4 +16,8 @@ public sealed class AgentOptions
 
     /// <summary>Cap on the tokens the model may generate in one call.</summary>
     public int MaxOutputTokens { get; set; } = 800;
+
+    /// <summary>A zero or negative limit would remove the cap it stands for (or make every call fail), so it is refused at startup.</summary>
+    public static bool IsValid(AgentOptions o) =>
+        o.MaxInputChars > 0 && o.MaxHistoryMessages > 0 && o.MaxIterations > 0 && o.MaxOutputTokens > 0;
 }

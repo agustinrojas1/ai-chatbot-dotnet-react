@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Chatbot.Api\Chatbot.Api.csproj" />
+    <ProjectReference Include="..\..\..\evals\Chatbot.Evals\Chatbot.Evals.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,3 +1,4 @@
+import type { Ref } from 'react'
 import type { Niche, SessionStatus } from '../api/types'
 import { Avatar } from './Avatar'
 import { TraceIcon } from './icons'
@@ -8,11 +9,22 @@ interface ChatHeaderProps {
   sessionStatus: SessionStatus
   traceOpen: boolean
   onToggleTrace: () => void
+  /** Past session opened from the admin page. */
+  readOnly?: boolean
+  traceButtonRef?: Ref<HTMLButtonElement>
 }
 
-export function ChatHeader({ niche, typing, sessionStatus, traceOpen, onToggleTrace }: ChatHeaderProps) {
+export function ChatHeader({
+  niche,
+  typing,
+  sessionStatus,
+  traceOpen,
+  onToggleTrace,
+  readOnly = false,
+  traceButtonRef,
+}: ChatHeaderProps) {
   const handoff = sessionStatus === 'AwaitingHuman'
-  const status = handoff ? 'Transferred to staff 👤' : typing ? 'typing…' : 'online'
+  const status = readOnly ? 'read-only' : handoff ? 'Transferred to staff 👤' : typing ? 'typing…' : 'online'
   const statusClass = handoff
     ? 'font-semibold text-white'
     : typing
@@ -23,12 +35,13 @@ export function ChatHeader({ niche, typing, sessionStatus, traceOpen, onToggleTr
     <header className="flex items-center gap-3 bg-whatsapp-header px-4 py-2.5 text-white">
       <Avatar avatar={niche?.avatar ?? null} />
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-[15px] font-semibold leading-tight">{niche?.headerName ?? 'Connecting…'}</h1>
+        <h1 className="truncate text-[15px] font-semibold leading-tight">{niche?.headerName ?? (readOnly ? 'Past session' : 'Connecting…')}</h1>
         <p className={`text-xs leading-tight ${statusClass}`} data-testid="chat-status">
           {status}
         </p>
       </div>
       <button
+        ref={traceButtonRef}
         type="button"
         onClick={onToggleTrace}
         aria-pressed={traceOpen}

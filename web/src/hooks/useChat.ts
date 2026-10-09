@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, type Dispatch } from 'react
 import { createSession, getMessages, getTrace, fetchNiches, streamMessage } from '../api/client'
 import { ApiError } from '../api/errors'
 import { newLocalId } from '../lib/ids'
+import type { ViewedSession } from '../lib/route'
 import {
   canSend,
   chatReducer,
@@ -51,8 +52,29 @@ async function establishSession(
   dispatch({ type: 'session_started', sessionId: created.sessionId, nicheId })
 }
 
-async function loadInitial(dispatch: Send, signal: AbortSignal): Promise<void> {
+/** Opens a past session read-only (admin link): its messages and trace, no new session, nothing stored. */
+async function viewSession(dispatch: Send, signal: AbortSignal, view: ViewedSession): Promise<void> {
+  const niches = await fetchNiches(signal).catch(() => [])
+  signal.throwIfAborted()
+  dispatch({ type: 'niches_loaded', niches })
+  const nicheId = niches.find((n) => n.id === view.niche)?.id ?? null
+  dispatch({ type: 'reset', nicheId })
+  const messages = await getMessages(view.sessionId, signal)
+  const trace = await getTrace(view.sessionId, signal).catch(() => null)
+  signal.throwIfAborted()
+  dispatch({
+    type: 'session_restored',
+    sessionId: view.sessionId,
+    nicheId,
+    stored: messages,
+    trace,
+    readOnly: true,
+  })
+}
+
+async function loadInitial(dispatch: Send, signal: AbortSignal, view: ViewedSession | null): Promise<void> {
   try {
+    if (view) return await viewSession(dispatch, signal, view)
     const niches = await fetchNiches(signal)
     signal.throwIfAborted()
     if (niches.length === 0) throw new Error('The server has no niches configured.')
@@ -64,7 +86,13 @@ async function loadInitial(dispatch: Send, signal: AbortSignal): Promise<void> {
     await establishSession(dispatch, signal, wanted.id, true)
   } catch (error) {
     if (signal.aborted) return
-    dispatch({ type: 'session_failed', message: error instanceof Error ? error.message : GENERIC_ERROR })
+    const message =
+      error instanceof ApiError && error.kind === 'not_found' && view
+        ? 'That session does not exist (or has expired).'
+        : error instanceof Error
+          ? error.message
+          : GENERIC_ERROR
+    dispatch({ type: 'session_failed', message })
   }
 }
 
@@ -106,7 +134,7 @@ function dispatchApiError(dispatch: Send, error: unknown): void {
   dispatch({ type: 'request_failed', message: GENERIC_ERROR, retryable: true, sessionEnded: false })
 }
 
-export function useChat() {
+export function useChat(view: ViewedSession | null = null) {
   const [state, dispatch] = useReducer(chatReducer, initialChatState)
 
   const stateRef = useRef(state)
@@ -129,11 +157,13 @@ export function useChat() {
   useEffect(() => {
     const controller = new AbortController()
     setupAbort.current = controller
-    void loadInitial(dispatch, controller.signal)
+    void loadInitial(dispatch, controller.signal, view)
     return () => {
       controller.abort()
       streamAbort.current?.abort()
     }
+    // The viewed session comes from the URL and does not change while the page lives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /** Starts a brand-new session for a niche; used by the niche selector and "Restart demo". */
@@ -172,8 +202,8 @@ export function useChat() {
     const controller = new AbortController()
     setupAbort.current = controller
     dispatch({ type: 'reset', nicheId: stateRef.current.nicheId })
-    void loadInitial(dispatch, controller.signal)
-  }, [abortAll])
+    void loadInitial(dispatch, controller.signal, view)
+  }, [abortAll, view])
 
   const send = useCallback(async (rawText: string) => {
     const text = rawText.trim()
@@ -237,5 +267,17 @@ export function useChat() {
     void send(text)
   }, [send])
 
-  return { state, send, retry, switchNiche, restart, reload }
+  /** Pulls the runs the server has that this page lacks (a reload whose `/trace` request failed). */
+  const hydrateTrace = useCallback(async () => {
+    const sessionId = stateRef.current.sessionId
+    if (!sessionId) return
+    try {
+      const trace = await getTrace(sessionId)
+      if (stateRef.current.sessionId === sessionId) dispatch({ type: 'trace_hydrated', trace })
+    } catch {
+      // The panel keeps showing what it has; the next open tries again.
+    }
+  }, [])
+
+  return { state, send, retry, switchNiche, restart, reload, hydrateTrace }
 }

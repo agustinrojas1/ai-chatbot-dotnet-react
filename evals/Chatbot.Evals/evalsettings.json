@@ -1,0 +1,20 @@
+{
+  "Llm": {
+    "Primary": {
+      "BaseUrl": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "ApiKey": "",
+      "Model": ""
+    },
+    "Fallback": {
+      "BaseUrl": "https://api.groq.com/openai/v1",
+      "ApiKey": "",
+      "Model": ""
+    }
+  },
+  "Agent": {
+    "MaxInputChars": 1000,
+    "MaxHistoryMessages": 20,
+    "MaxIterations": 5,
+    "MaxOutputTokens": 800
+  }
+}

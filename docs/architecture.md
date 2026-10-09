@@ -39,8 +39,9 @@ Cost: every model call is priced with the `ModelPricing` row of the model that a
 | 400 | Empty text, text longer than `MaxInputChars` (validation problem on `text`), unknown niche |
 | 404 | Unknown session |
 | 409 | Session is `Closed` |
+| 429 | A limit was hit (see "Limits and abuse protection"); body is `application/json` `{ "message", "code" }`, not problem details |
 
-All of them are `application/problem+json`. A session in `AwaitingHuman` still accepts messages: the agent tells the customer that a person will continue.
+All the others are `application/problem+json`. A session in `AwaitingHuman` still accepts messages: the agent tells the customer that a person will continue.
 
 ## SSE contract
 
@@ -168,3 +169,59 @@ curl -H 'X-Admin-Key: $ADMIN_KEY' 'http://localhost:8080/api/admin/handoffs'
 ## Session creation
 
 `POST /api/sessions` with `{"niche":"dental"}` returns `201` and `{"sessionId":"...","greeting":"...","quickReplies":["..."]}`. Niche ids are `realestate`, `dental` and `restaurant`. The greeting is not stored as a chat message. `ChatSession.ClientIpHash` is the first 32 hex characters of `SHA-256("{Security:IpHashSalt}:{remote IP}")`, so the IP itself is never stored.
+
+## Limits and abuse protection
+
+SPEC 9, implemented in `Chatbot.Api/Security`. Three limits guard `POST /api/sessions/{id}/messages`; each refusal happens **before** the agent creates a run, so a refused message stores nothing and calls no model. `GET` endpoints, `/health` and the admin lists are never limited.
+
+| Order | Limit | Default | Counted by | Code | `Retry-After` | Env var |
+|---|---|---|---|---|---|---|
+| 1 | Per client IP: messages | 30 per 10 min (sliding window) | in memory, per API instance | `ip_rate_limit` | seconds until a slot frees | `RATE_LIMIT_IP_MESSAGES`, `RATE_LIMIT_IP_WINDOW_MINUTES` |
+| 1 | Per client IP: `POST /api/sessions` | 20 per 10 min, own counter | in memory | `ip_rate_limit` | seconds | `RATE_LIMIT_IP_SESSIONS` |
+| 2 | Per session | 25 user messages in total | `chat_messages` rows with role `User` | `session_limit` | none (the session is over) | `RATE_LIMIT_SESSION_MESSAGES` |
+| 3 | Global daily cap | 500 runs per UTC day | `agent_runs` started since 00:00 UTC | `daily_cap` | seconds until 00:00 UTC | `RATE_LIMIT_DAILY_REQUESTS` |
+
+The per-IP limits are `Microsoft.AspNetCore.RateLimiting` policies (`RequireRateLimiting`), so they run as middleware before routing to the handler and also count requests for unknown sessions. The other two are an endpoint filter (`MessageLimitFilter`) that counts rows, so they survive a restart, are shared by several API instances and cannot be dodged by rotating IPs. Counting and inserting are not one atomic step: a burst of concurrent requests can overshoot a database limit by a few messages, which is acceptable for a cost cap. Every run counts for the daily cap, failed ones included, because the provider was called. The per-IP counters are in memory and reset on restart (that limit only slows one client down; the two database limits are the hard cost bound).
+
+Every 429 has the same body, and the browser can read it and `Retry-After` because the CORS middleware runs before the limiter (`Retry-After` is an exposed header):
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 540
+Content-Type: application/json
+
+{"message":"Too many messages from your network. Please wait a few minutes and try again.","code":"ip_rate_limit"}
+```
+
+`session_limit` is the cue for the "Restart demo" banner; `daily_cap` and `ip_rate_limit` say to come back later. HTTP-level rejections are logged (warning, with the hashed client IP) and do not create a trace event. Every limit must be greater than zero; a zero or negative value (also in `Agent`) stops the app at startup instead of silently removing a cap.
+
+Cost caps per message come from `Agent:MaxOutputTokens` (sent as `ChatOptions.MaxOutputTokens` on every model call of the tool loop, including the fallback provider's) and `Agent:MaxIterations` (at most N tool rounds, so N + 1 model calls). Input is capped by `Agent:MaxInputChars` and the history window.
+
+### Client IP behind a proxy
+
+The limits and `ChatSession.ClientIpHash` use `HttpContext.Connection.RemoteIpAddress` after the forwarded headers middleware. `X-Forwarded-For` is believed only when the TCP peer is in `Security:TrustedProxyCidr` (`SECURITY_TRUSTED_PROXY_CIDR`, comma-separated CIDRs or IPs; default loopback and the private ranges, so the nginx container of `docker compose` works). `ForwardLimit` is 1: only the last entry, the one the trusted proxy wrote, is used; entries before it are client input. The proxy must append the peer address (`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`, as `web/nginx.conf` does). IPv6 clients are counted by their /64 network.
+
+Spoofing risk: if the API accepts connections from a trusted range it does not control (for example the API port published to the internet on a host where Docker NAT shows every client as a private bridge address, or a platform whose proxy is in 10.x but is not the only sender), any client can send `X-Forwarded-For: <random>` and get a fresh limit each time. In production list only the address of your proxy, and do not expose the API port directly. A blank value trusts nobody (the middleware is not added): then the limits see the proxy's own address, so everyone behind it shares one per-IP bucket.
+
+### CORS
+
+`Cors:AllowedOrigin` (`CORS_ALLOWED_ORIGIN`) is one origin or a comma-separated list, exact match (a trailing `/` is ignored). A wildcard, a path or a bare host stops the app at startup. Allowed methods are `GET` and `POST`, allowed request headers `Content-Type`, `Accept` and `X-Admin-Key`, no credentials. A foreign origin simply gets no CORS headers.
+
+### Secrets and configuration
+
+Secrets only come from environment variables (`.env`, ignored by git; `.env.example` lists every key with no real value, and `docker-compose.yml` passes each of them through). `appsettings.json` holds no secret. Outside Development the API logs a warning at startup when `Admin:Key` or `Security:IpHashSalt` is blank (the admin endpoints then answer 503, and IP hashes use a public development salt).
+
+### Prompt injection
+
+The prompt tells the model not to reveal its instructions, but the guarantee is in the code: the business and session of every tool come from the server-built `ToolContext`, an id of another business is "not found" (same answer as an id that does not exist), filters are serialized with `System.Text.Json` and matched with jsonb containment (no string-built SQL or JSON), and no tool can delete, list other sessions or call out. `PromptInjectionTests` replays a model that obeys an attacker (another business's offering and slot ids, a made-up `businessId`, a crafted filter key) and asserts nothing leaks and nothing is written. Real-model injection cases belong in the evals.
+
+### Trying the limits
+
+Offline, everything above is covered by `dotnet test` (fake model, real PostgreSQL). Against a real model, set the LLM keys in `.env`, lower a limit and send messages until the 429:
+
+```
+RATE_LIMIT_IP_MESSAGES=3 docker compose up -d --build api
+S=$(curl -s -XPOST localhost:8080/api/sessions -H 'content-type: application/json' -d '{"niche":"dental"}' | jq -r .sessionId)
+for i in 1 2 3 4; do curl -si -XPOST localhost:8080/api/sessions/$S/messages -H 'content-type: application/json' -d '{"text":"hi"}' | head -n1; done
+# the fourth: HTTP/1.1 429 Too Many Requests, Retry-After, {"message":...,"code":"ip_rate_limit"}
+```

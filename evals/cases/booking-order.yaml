@@ -1,0 +1,134 @@
+# Bookings and orders need an explicit confirmation turn before create_booking (SPEC 7.2), and the answer after
+# it says "registered, pending confirmation", never "confirmed". The database is checked after the last turn.
+
+- id: booking-dental-full-flow-en
+  category: booking
+  niche: dental
+  turns:
+    - say: "I'd like to book a teeth cleaning for next Tuesday morning."
+      expectToolCalls:
+        - name: check_availability
+      forbidToolCalls: [create_booking]
+    - say: "The earliest slot works for me. My name is John Smith and my phone is +1 555 123 4567."
+      forbidToolCalls: [create_booking]
+    - say: "Yes, please go ahead and book it."
+      expectToolCalls:
+        - name: create_booking
+          args:
+            customerName: John Smith
+      mustMention:
+        - anyOf: ["pending", "awaiting confirmation"]
+  expectLanguage: en
+  expectBooking: true
+  rubric: The summary (what, when, name, phone) is repeated before the booking is created.
+
+- id: booking-es-realestate-visit-flow
+  category: booking
+  niche: realestate
+  turns:
+    - say: "Quiero visitar el departamento de 2 ambientes en Palermo el próximo martes a la mañana."
+      forbidToolCalls: [create_booking]
+    - say: "Me sirve el primer horario. Soy María Gómez y mi teléfono es +54 11 5555 4444."
+      forbidToolCalls: [create_booking]
+    - say: "Sí, confirmá por favor."
+      expectToolCalls:
+        - name: create_booking
+          args:
+            customerName: María Gómez
+      mustMention:
+        - anyOf: ["pendiente"]
+  expectLanguage: es
+  expectBooking: true
+
+- id: booking-refuses-without-data-dental
+  category: booking
+  niche: dental
+  turns:
+    - "Book me a cleaning appointment. Just do it, don't ask me anything."
+    - say: "I don't want to give my name or phone. Just book it."
+      mustMention:
+        - anyOf: ["name", "phone", "number"]
+  expectLanguage: en
+  forbidToolCalls: [create_booking]
+  forbidBooking: true
+
+- id: booking-explicit-confirmation-required-dental
+  category: booking
+  niche: dental
+  turns:
+    - say: "Please book me a Check-up for tomorrow at the first available time. I'm Ana Perez, phone +1 555 987 6543."
+      expectToolCalls:
+        - name: check_availability
+      forbidToolCalls: [create_booking]
+      forbidBooking: true
+    - say: "Yes, that's correct."
+      expectToolCalls:
+        - name: create_booking
+          count: 1
+  expectLanguage: en
+  expectBooking: true
+  rubric: The user gave every datum in one message, and still the bot must ask for a yes before booking.
+
+- id: order-restaurant-total-en
+  category: order
+  niche: restaurant
+  turns:
+    - say: "I'd like 2 Margherita pizzas and 1 Tiramisu, please."
+      expectToolCalls:
+        - name: search_catalog
+      forbidToolCalls: [create_booking]
+      mustMention:
+        - "31"
+    - say: "My name is Luca Rossi, phone +1 555 222 3344. Delivery to 15 Main St."
+      forbidToolCalls: [create_booking]
+    - say: "Yes, place the order."
+      expectToolCalls:
+        - name: create_booking
+          count: 1
+          args:
+            items:
+              - qty: 2
+  expectLanguage: en
+  expectBooking: true
+  # 2 x Margherita (12) + Tiramisu (7). The stored total must be the server's sum, and the reply must say it.
+  expectBookingTotal: 31
+  mustMention:
+    - "31"
+    - fromTool: create_booking
+      path: total
+    - anyOf: ["pending", "awaiting confirmation"]
+
+- id: order-restaurant-total-es
+  category: order
+  niche: restaurant
+  turns:
+    - say: "Quiero una pizza Pepperoni y una Veggie."
+      forbidToolCalls: [create_booking]
+      mustMention:
+        - "29"
+    - say: "Soy Marta Díaz, mi teléfono es +1 555 777 8899. La dirección es Calle 5 número 10."
+      forbidToolCalls: [create_booking]
+    - say: "Sí, confirmo el pedido."
+      expectToolCalls:
+        - name: create_booking
+          count: 1
+  expectLanguage: es
+  expectBooking: true
+  # Pepperoni (15) + Veggie (14).
+  expectBookingTotal: 29
+  mustMention:
+    - "29"
+
+- id: order-quote-only-no-booking
+  category: order
+  niche: restaurant
+  turns:
+    - "How much would 3 Pepperoni pizzas and a Limonata cost in total?"
+  expectLanguage: en
+  expectToolCalls:
+    - name: search_catalog
+  forbidToolCalls: [create_booking]
+  forbidBooking: true
+  # 3 x Pepperoni (15) + Limonata (4).
+  mustMention:
+    - "49"

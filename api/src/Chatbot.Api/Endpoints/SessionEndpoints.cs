@@ -1,3 +1,4 @@
+using Chatbot.Api.Security;
 using Chatbot.Core.Domain;
 using Chatbot.Infrastructure.Agent;
 using Chatbot.Infrastructure.Persistence;
@@ -13,8 +14,12 @@ internal static class SessionEndpoints
 {
     public static IEndpointRouteBuilder MapSessionEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/sessions", CreateSessionAsync);
-        app.MapPost("/api/sessions/{id:guid}/messages", SendMessageAsync);
+        app.MapPost("/api/sessions", CreateSessionAsync)
+            .RequireRateLimiting(AbuseProtection.SessionsPolicy);
+        // Order: the rate limiter (per IP) runs as middleware, then the filter (per session and daily cap) before the agent.
+        app.MapPost("/api/sessions/{id:guid}/messages", SendMessageAsync)
+            .RequireRateLimiting(AbuseProtection.MessagesPolicy)
+            .AddEndpointFilter<MessageLimitFilter>();
         return app;
     }
 
@@ -41,7 +46,7 @@ internal static class SessionEndpoints
         }
 
         var now = clock.GetUtcNow();
-        var salt = configuration["Security:IpHashSalt"] ?? ClientIp.DefaultSalt;
+        var salt = ClientIp.ResolveSalt(configuration["Security:IpHashSalt"]);
         var session = new ChatSession
         {
             BusinessId = business.Id,

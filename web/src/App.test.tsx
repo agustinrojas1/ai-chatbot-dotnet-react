@@ -281,13 +281,144 @@ describe('chat flow', () => {
     await screen.findByText('Hi! I am Sofia.')
   })
 
-  it('toggles the trace panel placeholder from the header', async () => {
+  it('toggles the trace panel from the header', async () => {
     await renderReady()
     expect(screen.queryByTestId('trace-panel')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Show agent trace' }))
     expect(screen.getByTestId('trace-panel')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Hide agent trace' }))
     expect(screen.queryByTestId('trace-panel')).toBeNull()
+  })
+
+  it('shows the trace live: steps as they arrive, a running step, totals only after run_completed', async () => {
+    await renderReady()
+    fireEvent.click(screen.getByRole('button', { name: 'Show agent trace' }))
+    expect(screen.getByTestId('trace-empty')).toBeTruthy()
+    expect(screen.getByText(/Every step the AI took to answer/)).toBeTruthy()
+
+    const stream = liveStream()
+    messageResponses.push(() => stream.response)
+    typeMessage('Book a cleaning')
+    await stream.push(sse('run_started', { runId: 'r1' }))
+    await screen.findByTestId('trace-running')
+    expect(screen.getByRole('heading', { name: 'Book a cleaning' })).toBeTruthy()
+
+    const tool = { runId: 'r1', sequence: 0, type: 'ToolCall', name: 'search_catalog', input: { query: 'cleaning' }, output: { offerings: [] }, tokensIn: null, tokensOut: null, durationMs: 14, costUsd: null }
+    await stream.push(sse('trace', tool))
+    await screen.findByText('Tool: search_catalog')
+    expect(screen.getByTestId('trace-running')).toBeTruthy()
+    expect(screen.queryByTestId('run-totals')).toBeNull()
+
+    await stream.push(sse('trace', { ...tool, sequence: 1, type: 'Guardrail', name: 'slot_full', input: null, output: { tool: 'create_booking', code: 'slot_full', message: 'full' }, durationMs: 0 }))
+    await screen.findByText('Guardrail: that slot is already full')
+
+    await stream.push(completed('r1'))
+    await stream.close()
+    await waitFor(() => expect(screen.queryByTestId('trace-running')).toBeNull())
+    const totals = screen.getByTestId('run-totals')
+    expect(totals.textContent).toContain('$0.0010')
+    expect(screen.getByText('Completed')).toBeTruthy()
+    expect(screen.getByTestId('session-totals').textContent).toContain('1 run')
+  })
+
+  it('shows a failed run with its Error step', async () => {
+    await renderReady()
+    fireEvent.click(screen.getByRole('button', { name: 'Show agent trace' }))
+    const errorEvent = { runId: 'r1', sequence: 0, type: 'Error', name: 'agent_error', input: { textLength: 0 }, output: { error: 'X' }, tokensIn: null, tokensOut: null, durationMs: 5, costUsd: null }
+    messageResponses.push(
+      () =>
+        new Response(
+          sse('run_started', { runId: 'r1' }) + sse('trace', errorEvent) + sse('error', { message: 'Boom', retryable: true }),
+        ),
+    )
+    typeMessage('Hello')
+    await screen.findByText('Error: the run failed unexpectedly')
+    expect(screen.getByText('Failed')).toBeTruthy()
+    expect(screen.queryByTestId('run-totals')).toBeNull()
+    expect(screen.queryByTestId('trace-running')).toBeNull()
+  })
+
+  it('Esc closes the trace sheet and returns focus to the toggle', async () => {
+    await renderReady()
+    const toggle = screen.getByRole('button', { name: 'Show agent trace' })
+    fireEvent.click(toggle)
+    const panel = screen.getByTestId('trace-panel')
+    await waitFor(() => expect(document.activeElement).toBe(panel))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('trace-panel')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Show agent trace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show agent trace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close agent trace' }))
+    expect(screen.queryByTestId('trace-panel')).toBeNull()
+  })
+
+  it('hydrates missing runs from /trace when the panel opens', async () => {
+    await renderReady()
+    handlers.unshift((url) =>
+      url === '/api/sessions/session-1/trace'
+        ? json({
+            sessionId: 'session-1',
+            runs: [
+              {
+                id: 'old', userMessage: 'Earlier question', status: 'Ok', model: 'm', provider: 'p', tokensIn: 10, tokensOut: 5,
+                costUsd: 0.0123, durationMs: 900, startedAt: '2026-01-01T10:00:00Z',
+                events: [{ runId: 'old', sequence: 0, type: 'LlmCall', name: 'm', input: {}, output: { provider: 'p', model: 'm', text: 'Hello', toolCalls: [] }, tokensIn: 10, tokensOut: 5, durationMs: 900, costUsd: 0.0123 }],
+              },
+            ],
+          })
+        : undefined,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Show agent trace' }))
+    await screen.findByRole('heading', { name: 'Earlier question' })
+    expect(screen.getByTestId('run-totals').textContent).toContain('$0.0123')
+  })
+
+  describe('past session view (/?session=)', () => {
+    afterEach(() => window.history.replaceState({}, '', '/'))
+
+    it('opens a past session read-only with the trace panel open and the input disabled', async () => {
+      window.history.replaceState({}, '', '/?session=past-1&niche=dental')
+      handlers.unshift((url) => {
+        if (url === '/api/sessions/past-1/messages') {
+          return json({
+            messages: [
+              { id: 'a', role: 'user', text: 'Hi there', createdAt: '2026-01-01T10:00:00Z' },
+              { id: 'b', role: 'assistant', text: 'Welcome back', createdAt: '2026-01-01T10:00:05Z' },
+            ],
+            sessionStatus: 'Active',
+            language: 'en',
+          })
+        }
+        if (url === '/api/sessions/past-1/trace') {
+          return json({
+            sessionId: 'past-1',
+            runs: [
+              {
+                id: 'r1', userMessage: 'Hi there', status: 'Ok', model: 'm', provider: 'p', tokensIn: 10, tokensOut: 5, costUsd: 0.001,
+                durationMs: 100, startedAt: '2026-01-01T10:00:00Z',
+                events: [{ runId: 'r1', sequence: 0, type: 'ToolCall', name: 'search_catalog', input: {}, output: {}, tokensIn: null, tokensOut: null, durationMs: 3, costUsd: null }],
+              },
+            ],
+          })
+        }
+        return undefined
+      })
+      render(<App />)
+      await screen.findByText('Welcome back')
+      expect(screen.getByTestId('readonly-banner').textContent).toContain('Viewing a past session')
+      expect(screen.getByLabelText('Message').hasAttribute('disabled')).toBe(true)
+      expect(screen.getByTestId('trace-panel')).toBeTruthy()
+      expect(screen.getByText('Tool: search_catalog')).toBeTruthy()
+      expect(screen.getByRole('heading', { name: 'Dr. Smile Assistant' })).toBeTruthy()
+      expect(sessionCounter).toBe(0)
+      expect(localStorage.getItem('ai-booking-agent.session')).toBeNull()
+    })
+
+    it('says so when the session does not exist', async () => {
+      window.history.replaceState({}, '', '/?session=nope')
+      render(<App />)
+      await screen.findByText(/That session does not exist/)
+    })
   })
 
   it('links the author footer safely', async () => {

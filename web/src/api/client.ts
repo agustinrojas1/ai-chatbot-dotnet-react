@@ -1,6 +1,8 @@
 import { ApiError, errorFromResponse } from './errors'
 import { readStreamEvents } from './sse'
 import type {
+  AdminBooking,
+  AdminHandoff,
   MessagesResponse,
   Niche,
   SessionCreated,
@@ -47,6 +49,24 @@ export function getMessages(sessionId: string, signal?: AbortSignal): Promise<Me
 
 export function getTrace(sessionId: string, signal?: AbortSignal): Promise<TraceResponse> {
   return getJson<TraceResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/trace`, signal)
+}
+
+function adminPath(resource: 'bookings' | 'handoffs', niche: string | null): string {
+  return `/api/admin/${resource}${niche ? `?niche=${encodeURIComponent(niche)}` : ''}`
+}
+
+async function getAdminJson<T>(path: string, adminKey: string, signal?: AbortSignal): Promise<T> {
+  const response = await request(path, { headers: { Accept: 'application/json', 'X-Admin-Key': adminKey }, signal })
+  return (await response.json()) as T
+}
+
+/** Newest first, at most 200. 401 = wrong key, 503 = admin disabled on the server. */
+export function getAdminBookings(adminKey: string, niche: string | null, signal?: AbortSignal): Promise<AdminBooking[]> {
+  return getAdminJson<AdminBooking[]>(adminPath('bookings', niche), adminKey, signal)
+}
+
+export function getAdminHandoffs(adminKey: string, niche: string | null, signal?: AbortSignal): Promise<AdminHandoff[]> {
+  return getAdminJson<AdminHandoff[]>(adminPath('handoffs', niche), adminKey, signal)
 }
 
 /**

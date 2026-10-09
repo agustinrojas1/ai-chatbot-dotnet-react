@@ -92,3 +92,34 @@ export type StreamEvent =
   | { event: 'error'; data: { message: string; retryable: boolean } }
 
 export type RateLimitCode = 'ip_rate_limit' | 'session_limit' | 'daily_cap'
+
+export type BookingStatus = 'PendingConfirmation' | 'Confirmed' | 'Cancelled' | (string & {})
+
+/** One row of `GET /api/admin/bookings` (docs/architecture.md, Admin). */
+export interface AdminBooking {
+  id: string
+  niche: NicheId
+  sessionId: string
+  status: BookingStatus
+  customerName: string
+  /** Masked by the server unless `Admin:MaskPhones` is off. */
+  customerPhone: string
+  slotStartsAt: string | null
+  offeringName: string | null
+  /** Order lines (restaurant): `[{ offeringId, name, qty, unitPrice, options }]`. Shape not enforced by the API. */
+  items: unknown
+  total: number | null
+  notes: string | null
+  createdAt: string
+}
+
+/** One row of `GET /api/admin/handoffs`. */
+export interface AdminHandoff {
+  id: string
+  niche: NicheId
+  sessionId: string
+  reason: string
+  summary: string | null
+  status: string
+  createdAt: string
+}

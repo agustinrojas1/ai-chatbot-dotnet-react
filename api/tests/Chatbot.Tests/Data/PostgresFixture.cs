@@ -14,7 +14,11 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
-    /// <summary>Creates an empty database and returns its connection string (no migrations applied).</summary>
+    /// <summary>
+    /// Creates an empty database and returns its connection string (no migrations applied). Pooling is off: every test
+    /// has its own database, and Npgsql keeps one pool per connection string, so the idle connections of finished tests
+    /// would pile up until PostgreSQL refuses new clients ("too many clients").
+    /// </summary>
     public async Task<string> CreateEmptyDatabaseAsync()
     {
         var name = $"test_{Guid.NewGuid():N}";
@@ -25,7 +29,7 @@ public sealed class PostgresFixture : IAsyncLifetime
             await cmd.ExecuteNonQueryAsync();
         }
 
-        return new NpgsqlConnectionStringBuilder(_container.GetConnectionString()) { Database = name }.ConnectionString;
+        return new NpgsqlConnectionStringBuilder(_container.GetConnectionString()) { Database = name, Pooling = false }.ConnectionString;
     }
 
     /// <summary>Creates a database and applies all migrations.</summary>

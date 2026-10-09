@@ -8,6 +8,7 @@ import type {
   SessionStatus,
   TraceEvent,
   TraceResponse,
+  TraceRun,
 } from '../api/types'
 
 export const MAX_INPUT_CHARS = 1000
@@ -64,6 +65,8 @@ export interface ChatState {
   banner: Banner | null
   /** Text of the last message sent, for Retry. */
   lastUserText: string | null
+  /** A past session opened from the admin page: nothing can be sent. */
+  readOnly: boolean
 }
 
 export const initialChatState: ChatState = {
@@ -80,6 +83,7 @@ export const initialChatState: ChatState = {
   pending: false,
   banner: null,
   lastUserText: null,
+  readOnly: false,
 }
 
 export type ChatAction =
@@ -90,10 +94,14 @@ export type ChatAction =
   | {
       type: 'session_restored'
       sessionId: string
-      nicheId: string
+      /** Null when a past session is opened without knowing its niche. */
+      nicheId: string | null
       stored: MessagesResponse
       trace: TraceResponse | null
+      readOnly?: boolean
     }
+  /** Adds the runs the server knows and this page does not (after a reload whose `/trace` failed). Local runs win. */
+  | { type: 'trace_hydrated'; trace: TraceResponse }
   | { type: 'session_failed'; message: string }
   | { type: 'user_message'; id: string; text: string; at: string }
   /** Drops the failed turn (user message and partial answer) so it can be sent again. */
@@ -117,6 +125,27 @@ function updateRun(runs: RunState[], runId: string, update: (run: RunState) => R
 function insertEvent(events: TraceEvent[], event: TraceEvent): TraceEvent[] {
   if (events.some((e) => e.sequence === event.sequence)) return events
   return [...events, event].sort((a, b) => a.sequence - b.sequence)
+}
+
+function runFromTrace(run: TraceRun): RunState {
+  return {
+    runId: run.id,
+    userMessage: run.userMessage,
+    status: run.status === 'Ok' ? 'ok' : 'error',
+    startedAt: run.startedAt,
+    events: [...run.events].sort((a, b) => a.sequence - b.sequence),
+    info:
+      run.status === 'Ok'
+        ? {
+            tokensIn: run.tokensIn,
+            tokensOut: run.tokensOut,
+            costUsd: run.costUsd,
+            durationMs: run.durationMs,
+            model: run.model,
+            provider: run.provider,
+          }
+        : null,
+  }
 }
 
 function lastUserMessageText(messages: ChatMessage[]): string {
@@ -205,24 +234,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           createdAt: last?.createdAt ?? new Date().toISOString(),
         })
       }
-      const runs: RunState[] = (trace?.runs ?? []).map((run) => ({
-        runId: run.id,
-        userMessage: run.userMessage,
-        status: run.status === 'Ok' ? 'ok' : 'error',
-        startedAt: run.startedAt,
-        events: [...run.events].sort((a, b) => a.sequence - b.sequence),
-        info:
-          run.status === 'Ok'
-            ? {
-                tokensIn: run.tokensIn,
-                tokensOut: run.tokensOut,
-                costUsd: run.costUsd,
-                durationMs: run.durationMs,
-                model: run.model,
-                provider: run.provider,
-              }
-            : null,
-      }))
+      const runs = (trace?.runs ?? []).map(runFromTrace)
       return {
         ...initialChatState,
         phase: 'ready',
@@ -234,7 +246,14 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages,
         runs,
         lastUserText: lastUserMessageText(messages) || null,
+        readOnly: action.readOnly ?? false,
       }
+    }
+
+    case 'trace_hydrated': {
+      const known = new Set(state.runs.map((r) => r.runId))
+      const missing = action.trace.runs.filter((r) => !known.has(r.id)).map(runFromTrace)
+      return missing.length === 0 ? state : { ...state, runs: [...missing, ...state.runs] }
     }
 
     case 'session_failed':
@@ -395,6 +414,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 export function canType(state: ChatState): boolean {
   return (
     state.phase === 'ready' &&
+    !state.readOnly &&
     state.sessionId !== null &&
     state.sessionStatus === 'Active' &&
     state.banner?.kind !== 'session_ended' &&

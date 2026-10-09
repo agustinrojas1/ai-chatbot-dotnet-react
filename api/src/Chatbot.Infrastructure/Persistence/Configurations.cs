@@ -134,6 +134,7 @@ internal sealed class AgentRunConfiguration : IEntityTypeConfiguration<AgentRun>
         // NoAction: deleting a session cascades to both messages and runs in the same statement.
         b.HasOne<ChatMessage>().WithMany().HasForeignKey(x => x.UserMessageId).OnDelete(DeleteBehavior.NoAction);
         b.HasIndex(x => new { x.SessionId, x.StartedAt });
+        b.HasIndex(x => x.StartedAt); // the daily cap counts the runs of the current UTC day
         b.HasIndex(x => x.UserMessageId);
     }
 }

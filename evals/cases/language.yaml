@@ -1,0 +1,86 @@
+# Language (SPEC 7.3, the bug of the v1): the reply is in the language of the user's last message.
+# The catalog of the seed is in English; Spanish messages test the "translate catalog details" rule, and an
+# English message that names Spanish places (Núñez) tests that the reply does not drift to Spanish.
+
+- id: lang-en-dental-price
+  category: language
+  niche: dental
+  turns:
+    - "Hi! How much does a teeth cleaning cost?"
+  expectLanguage: en
+  expectToolCalls:
+    - name: search_catalog
+  mustMention:
+    - "80"
+
+- id: lang-es-dental-price
+  category: language
+  niche: dental
+  turns:
+    - "Hola, ¿cuánto cuesta una limpieza dental?"
+  expectLanguage: es
+  expectToolCalls:
+    - name: search_catalog
+  mustMention:
+    - "80"
+
+- id: lang-switch-en-to-es-realestate
+  category: language
+  niche: realestate
+  turns:
+    - say: "Hi, what apartments do you have for rent in Palermo?"
+      expectLanguage: en
+    - say: "Gracias. ¿Tenés algo más barato en otro barrio?"
+      expectLanguage: es
+  expectToolCalls:
+    - name: search_catalog
+  forbidToolCalls: [create_booking]
+  rubric: The v1 bug. After the switch the reply must be fully Spanish, not a mix.
+
+- id: lang-switch-es-to-en-restaurant
+  category: language
+  niche: restaurant
+  turns:
+    - say: "Hola, ¿qué pizzas vegetarianas tienen?"
+      expectLanguage: es
+    - say: "Thanks! What is the price of the Veggie one, and do you deliver?"
+      expectLanguage: en
+      mustMention:
+        - "14"
+  expectToolCalls:
+    - name: search_catalog
+
+- id: lang-es-message-english-catalog-realestate
+  category: language
+  niche: realestate
+  turns:
+    - "Quiero alquilar un departamento de 2 ambientes. ¿Qué tienen disponible?"
+  expectLanguage: es
+  expectToolCalls:
+    - name: search_catalog
+  mustMention:
+    - fromTool: search_catalog
+      path: "results[*].price"
+  rubric: The catalog descriptions are in English; the reply must translate them.
+
+- id: lang-en-message-spanish-place-names-realestate
+  category: language
+  niche: realestate
+  turns:
+    - "I'm interested in buying something in Núñez or Villa Crespo. What do you have?"
+  expectLanguage: en
+  expectToolCalls:
+    - name: search_catalog
+  mustMention:
+    - fromTool: search_catalog
+      path: "results[*].price"
+
+- id: lang-ambiguous-keeps-language-dental
+  category: language
+  niche: dental
+  turns:
+    - "Hola, quiero sacar un turno para una limpieza"
+    - "ok"
+  expectLanguage: es
+  forbidBooking: true
+  rubric: A message with no language evidence ("ok") keeps the language of the session.

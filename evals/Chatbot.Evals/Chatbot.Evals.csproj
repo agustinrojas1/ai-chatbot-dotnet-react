@@ -1,15 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\api\src\Chatbot.Core\Chatbot.Core.csproj" />
-    <ProjectReference Include="..\..\api\src\Chatbot.Infrastructure\Chatbot.Infrastructure.csproj" />
-  </ItemGroup>
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\api\src\Chatbot.Core\Chatbot.Core.csproj" />
+    <ProjectReference Include="..\..\api\src\Chatbot.Infrastructure\Chatbot.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.16.0" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The harness types are internal; the test project exercises them directly. -->
+    <InternalsVisibleTo Include="Chatbot.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="evalsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
 </Project>
