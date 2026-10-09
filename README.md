@@ -160,23 +160,26 @@ dotnet run --project evals/Chatbot.Evals
 
 Needs Docker for a throwaway PostgreSQL (or set `ConnectionStrings__Postgres`). Options, the case format and what the checks can and cannot tell are in [evals/README.md](evals/README.md). `dotnet run --project evals/Chatbot.Evals -- --fake` runs the harness with a fake model to check the harness itself (most cases fail on purpose).
 
-**Results: _pending first real-model run_.** The harness and cases are tested offline; no real-model run has been executed yet, so there are no numbers. The report is written to `evals/results/<date>.md`; fill this table from it.
+**Results (last run: 2026-10-09).** 34 of 36 cases pass (94.4 %). All three MVP targets are met.
 
-- Model / provider: _pending_
-- Date: _pending_
-- Total tokens / cost: _pending_
+- Model / provider: `gemini-3.5-flash-lite` via Gemini's OpenAI-compatible endpoint (free tier; the harness waits on 429 quota and spaces calls by 4 s).
+- Total tokens / cost: 337,043 in / 5,386 out, about $0.11 at paid-tier prices.
 
-| Category | Cases | Pass rate | Target |
-|---|---|---|---|
-| Language checks | _pending_ | _pending_ | 100 % |
-| Forbidden phrases | _pending_ | _pending_ | 100 % |
-| Tool use (search, availability, booking, order, handoff, injection, ...) | _pending_ | _pending_ | >= 90 % |
+| Target | Result | Required |
+|---|---|---|
+| Language (every reply in the visitor's language) | 100 % (36/36) | 100 % |
+| Forbidden phrases ("confirmed", promised emails, prompt leaks) | 100 % (36/36) | 100 % |
+| Correct tool use | 100 % (36/36) | >= 90 % |
+
+Per category: language 7/7, search 4/4, availability 3/3, booking 4/4, order 3/3, handoff 2/2, small talk 2/2, injection 6/6, not in catalog 2/3, gibberish 1/2. The two failures are behavior gaps of this small model, not safety failures: for a commercial-space request in the real estate demo it declines but does not offer a person, and for Spanish gibberish it answers with small talk instead of saying it did not understand. A model is not deterministic: expect a case or two to flip between runs (`--repeat <k>` runs each case k times).
+
+Real-model runs found four bugs that offline tests could not (see ADR-013, ADR-014 and ADR-010): Gemini 3 rejects replayed tool calls without a thought signature, Gemini drops the persona when a request has two system messages, Gemini sometimes ends a stream with a finish reason the OpenAI SDK cannot parse, and the model fabricated a customer name and phone after a prompt-injection message (now rejected in code: the name and phone must appear in the visitor's own messages).
 
 ## Known limitations and next steps
 
 Limitations:
 
-- **No real-model verification yet.** Tool calling in streaming through the provider's OpenAI-compatible endpoint, the real-model evals and the end-to-end booking with a live model have never been run. Everything is tested with a scripted fake model.
+- **One provider verified end to end.** Streaming tool calling, the booking flow and the evals were run against Gemini only. The Groq fallback is covered by tests with stub transports and was never called live (no Groq key was used).
 - **Small, English-only catalog.** 28 seeded offerings across three businesses, in English. The agent is told per turn to reply in the visitor's language (English or Spanish) and to translate catalog details, but the data itself is not translated, and "English message, Spanish data" is only approximated in the evals.
 - **Tool results are not retried.** A tool call runs once. Malformed tool arguments go back to the model so it can correct them (up to 3 failing rounds), but a tool that fails for another reason is not retried by the server, and a provider failure after the first token is not retried on the fallback either: the run ends with an `error` event.
 - **The per-IP limiter is in memory.** It is per API instance and resets on restart. The per-session and daily limits are counted in the database and survive restarts, but a burst of concurrent requests can overshoot them by a few messages.

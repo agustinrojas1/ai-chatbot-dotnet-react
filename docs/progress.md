@@ -11,10 +11,10 @@
 - Tests (Testcontainers): invariants, concurrency on last slot, seeder idempotency.
 - Pending: persona prompts hold business facts until a Business column exists; seeder never updates existing rows.
 
-## M2 — Agent without UI (real-model smoke PENDING)
+## M2 — Agent without UI (real-model smoke done 2026-10-09, Gemini only)
 - 5 tools, FallbackChatClient (429/5xx before first token), AgentService (streaming, tool rows replayed between turns, fail-closed runs, per-call cost), language detection, SSE endpoints (`/api/niches`, `/api/sessions`, `/api/sessions/{id}/messages`).
 - Advisor review applied (see ADR-004 and docs/architecture.md).
-- Tested with a scripted fake `IChatClient`; curl against the real endpoint returns a clean `error` event without an API key.
+- Tested with a scripted fake `IChatClient` and, on 2026-10-09, against `gemini-3.5-flash-lite`: streaming tool calling, a full Spanish booking (row in `bookings`, PendingConfirmation) and a mid-conversation language switch work. The real run found and fixed: Gemini thought signatures (ADR-013), single system message (ADR-014), malformed-function-call finish reason (ADR-010), empty answer after a tool round, fabricated customer data (code guard in `create_booking`).
 - Pending: acceptance smoke against a real model (needs `LLM_PRIMARY_API_KEY`/`LLM_PRIMARY_MODEL`); verify tool calling in streaming through the OpenAI-compatible endpoint (SPEC 8).
 
 ## M3 — Trace (backend)
@@ -30,7 +30,7 @@
 - `.env.example` and `docker-compose.yml` carry every new key.
 - Tests (WebApplicationFactory + Testcontainers + fake model): per-IP limit at N+1 with `Retry-After`, session limit surviving a new host, daily cap with a manual clock across midnight and restart, `X-Forwarded-For` honored only from a trusted proxy, CORS preflight allowed vs foreign origin, GET and health not limited, cost caps on every model call, prompt-injection tool calls with another business's ids.
 - Advisor fixes: `Admin:MaskPhones` also masks phones inside booking notes/items and handoff reason/summary; `/api/admin/*` is rate limited per IP (`RATE_LIMIT_ADMIN_REQUESTS`, default 60 per window); an unconfigured LLM gives a non-retryable "The AI provider is not configured on this server." error.
-- Pending: real-model injection evals.
+- Real-model evals: 34/36 pass, all MVP targets met (language 100 %, forbidden phrases 100 %, tool use 100 %); see README.
 
 
 ## M5 — Trace panel and admin UI
@@ -43,4 +43,4 @@
 
 ## M7 — README and ADRs (deploy not done)
 - Done: README in SPEC 14 order, MIT `LICENSE`, ADR-007 to ADR-012 (no RAG, rules in code, SSE over fetch, provider fallback, per-call cost, tracing below function invocation), so `docs/decisions.md` has 12 ADRs.
-- Pending, owner input needed: demo URL and GIF; hosting provider (undecided: SPEC 17 asks the owner); confirmation of the license holder and year (MIT, "Agustín Rojas", 2026, written without confirmation); first real-model run of the evals; the real-model smoke of M2 (tool calling in streaming through the provider's OpenAI-compatible endpoint); a decision on whether the public `/admin` stays protected; CI green on GitHub (workflow exists, no run observed from here).
+- Pending, owner input needed: demo URL and GIF; hosting provider (undecided: SPEC 17 asks the owner); confirmation of the license holder and year (MIT, "Agustín Rojas", 2026, written without confirmation); a live Groq fallback run (only stub-tested); a decision on whether the public `/admin` stays protected; CI green on GitHub (workflow exists, no run observed from here).
