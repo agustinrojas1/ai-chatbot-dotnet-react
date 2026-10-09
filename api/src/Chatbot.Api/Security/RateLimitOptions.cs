@@ -17,6 +17,9 @@ public sealed class RateLimitOptions
     /// <summary>Sessions (<c>POST /api/sessions</c>) one client IP may create per <see cref="IpWindowMinutes"/>. Looser than the messages limit.</summary>
     public int IpSessions { get; set; } = 20;
 
+    /// <summary>Requests to <c>/api/admin/*</c> one client IP may send per <see cref="IpWindowMinutes"/> (also bounds guessing the admin key).</summary>
+    public int AdminRequests { get; set; } = 60;
+
     /// <summary>User messages one session accepts in total, counted from the database.</summary>
     public int SessionMessages { get; set; } = 25;
 
@@ -24,5 +27,5 @@ public sealed class RateLimitOptions
     public int DailyRequests { get; set; } = 500;
 
     public static bool IsValid(RateLimitOptions o) =>
-        o.IpMessages > 0 && o.IpWindowMinutes > 0 && o.IpSessions > 0 && o.SessionMessages > 0 && o.DailyRequests > 0;
+        o.IpMessages > 0 && o.IpWindowMinutes > 0 && o.IpSessions > 0 && o.AdminRequests > 0 && o.SessionMessages > 0 && o.DailyRequests > 0;
 }

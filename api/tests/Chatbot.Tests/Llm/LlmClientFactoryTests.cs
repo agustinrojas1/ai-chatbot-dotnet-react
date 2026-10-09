@@ -49,9 +49,9 @@ public class LlmClientFactoryTests
 
         var client = provider.GetRequiredKeyedService<IChatClient>(LlmClientFactory.ServiceKey);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetResponseAsync("hi"));
+        var error = await Assert.ThrowsAsync<LlmNotConfiguredException>(() => client.GetResponseAsync("hi"));
         Assert.Contains("Llm:Primary:ApiKey", error.Message);
-        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        await Assert.ThrowsAsync<LlmNotConfiguredException>(async () =>
         {
             await foreach (var _ in client.GetStreamingResponseAsync("hi"))
             {

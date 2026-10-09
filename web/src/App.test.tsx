@@ -334,7 +334,7 @@ describe('chat flow', () => {
     typeMessage('Hello')
     await screen.findByText('Error: the run failed unexpectedly')
     expect(screen.getByText('Failed')).toBeTruthy()
-    expect(screen.queryByTestId('run-totals')).toBeNull()
+    expect(screen.getByTestId('run-totals').textContent).toContain('failed run')
     expect(screen.queryByTestId('trace-running')).toBeNull()
   })
 

@@ -21,6 +21,9 @@ internal static class AbuseProtection
     /// <summary>Rate limit policy of <c>POST /api/sessions</c>.</summary>
     public const string SessionsPolicy = "sessions";
 
+    /// <summary>Rate limit policy of <c>/api/admin/*</c>.</summary>
+    public const string AdminPolicy = "admin";
+
     /// <summary>
     /// Everything is configured through <see cref="IConfigureOptions{TOptions}"/>, which runs when the options are first
     /// read, so the values come from the final configuration (and a bad value fails at startup, not at the first request).
@@ -137,8 +140,8 @@ internal static class AbuseProtection
     }
 
     /// <summary>
-    /// Sliding windows per client IP (<see cref="ClientIp.PartitionKey"/>), one policy for messages and a looser one for
-    /// session creation. A rejection is a 429 with the JSON body and <c>Retry-After</c>, and is logged with the hashed IP.
+    /// Sliding windows per client IP (<see cref="ClientIp.PartitionKey"/>): one policy for messages, a looser one for
+    /// session creation and one for the admin endpoints. A rejection is a 429 with the JSON body and <c>Retry-After</c>, and is logged with the hashed IP.
     /// </summary>
     private sealed class ConfigureRateLimiter(
         IOptions<RateLimitOptions> limits, IOptions<SecurityOptions> security, ILogger<ConfigureRateLimiter> logger)
@@ -150,6 +153,7 @@ internal static class AbuseProtection
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.AddPolicy(MessagesPolicy, http => PerIp(http, limits.Value.IpMessages, window));
             options.AddPolicy(SessionsPolicy, http => PerIp(http, limits.Value.IpSessions, window));
+            options.AddPolicy(AdminPolicy, http => PerIp(http, limits.Value.AdminRequests, window));
             options.OnRejected = async (context, ct) =>
             {
                 var http = context.HttpContext;
@@ -159,9 +163,12 @@ internal static class AbuseProtection
                 logger.LogWarning("Rate limit {Policy} hit by client {ClientIpHash}: retry after {RetryAfterSeconds:0}s",
                     policy, ClientIp.Hash(http.Connection.RemoteIpAddress?.ToString(), ClientIp.ResolveSalt(security.Value.IpHashSalt)), retryAfter.TotalSeconds);
 
-                var message = policy == SessionsPolicy
-                    ? "Too many new conversations from your network. Please wait a few minutes and try again."
-                    : "Too many messages from your network. Please wait a few minutes and try again.";
+                var message = policy switch
+                {
+                    SessionsPolicy => "Too many new conversations from your network. Please wait a few minutes and try again.",
+                    AdminPolicy => "Too many admin requests from your network. Please wait a few minutes and try again.",
+                    _ => "Too many messages from your network. Please wait a few minutes and try again.",
+                };
                 await LimitResponse.TooManyRequests(http, LimitCodes.IpRateLimit, message, retryAfter).ExecuteAsync(http);
             };
         }

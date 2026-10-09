@@ -112,14 +112,16 @@ function Totals({ totals }: { totals: RunTotalsView }) {
   )
   return (
     <div data-testid="run-totals" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-      <h4 className="mb-1 text-[11px] font-semibold text-slate-700">Run totals</h4>
+      <h4 className="mb-1 text-[11px] font-semibold text-slate-700">
+        {totals.failed ? 'Run totals (failed run, up to the failure)' : 'Run totals'}
+      </h4>
       <dl className="grid grid-cols-4 gap-2 max-[420px]:grid-cols-2">
         {cell('Tokens in', formatTokens(totals.tokensIn))}
         {cell('Tokens out', formatTokens(totals.tokensOut))}
         {cell('Cost', formatCost(totals.costUsd), `$${totals.costUsd}`)}
         {cell('Duration', formatDuration(totals.durationMs))}
       </dl>
-      {totals.model && <p className="mt-1.5 break-words text-[11px] text-slate-700">Answered by {totals.model}</p>}
+      {totals.model && <p className="mt-1.5 break-words text-[11px] text-slate-700">{totals.failed ? 'Last model' : 'Answered by'} {totals.model}</p>}
     </div>
   )
 }

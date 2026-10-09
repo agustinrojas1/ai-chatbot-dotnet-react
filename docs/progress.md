@@ -29,5 +29,18 @@
 - CORS: explicit origin list, `GET`/`POST`, `Content-Type`/`Accept`/`X-Admin-Key`, no wildcard. Zero or negative limits and malformed CORS or proxy settings stop the app at startup. Startup warnings when `Admin:Key` or `Security:IpHashSalt` is blank outside Development.
 - `.env.example` and `docker-compose.yml` carry every new key.
 - Tests (WebApplicationFactory + Testcontainers + fake model): per-IP limit at N+1 with `Retry-After`, session limit surviving a new host, daily cap with a manual clock across midnight and restart, `X-Forwarded-For` honored only from a trusted proxy, CORS preflight allowed vs foreign origin, GET and health not limited, cost caps on every model call, prompt-injection tool calls with another business's ids.
-- Pending: the frontend must read the 429 `code` (`session_limit` for the "Restart demo" banner); real-model injection evals.
+- Advisor fixes: `Admin:MaskPhones` also masks phones inside booking notes/items and handoff reason/summary; `/api/admin/*` is rate limited per IP (`RATE_LIMIT_ADMIN_REQUESTS`, default 60 per window); an unconfigured LLM gives a non-retryable "The AI provider is not configured on this server." error.
+- Pending: real-model injection evals.
 
+
+## M5 — Trace panel and admin UI
+- Done and covered by Vitest (94 tests in 9 files pass; verified by running `npm test`): the "Show agent trace" panel (desktop drawer, mobile bottom sheet) updated live from the SSE `trace` events and restored from `GET /api/sessions/{id}/trace`; the `/admin` page (key in `sessionStorage`, bookings and handoffs filterable by niche, link to the session trace, 401/503 states); the "Restart demo" banner on a `session_limit` 429.
+- Pending: not checked by hand in a browser against a real model on desktop and mobile; no screen recording (GIF) yet.
+
+## M6 — Evals (the limits half is above)
+- Harness `evals/Chatbot.Evals` and 36 cases in 10 categories (language 7, injection 6, search 4, booking 4, availability 3, order 3, not_in_catalog 3, handoff 2, smallTalk 2, gibberish 2). Checks: tool calls and order, bookings and handoffs that really exist in the database, language, forbidden phrases, `mustMention`, order totals. Console table and `evals/results/<date>.md`. The harness itself is tested offline (`api/tests/Chatbot.Tests/Evals`) and `--fake` runs it without a model.
+- Pending: **the evals have never run against a real model**, so there are no results and the MVP targets (100 % language and forbidden phrases, >= 90 % tool use) are unverified. The README has a placeholder table for them.
+
+## M7 — README and ADRs (deploy not done)
+- Done: README in SPEC 14 order, MIT `LICENSE`, ADR-007 to ADR-012 (no RAG, rules in code, SSE over fetch, provider fallback, per-call cost, tracing below function invocation), so `docs/decisions.md` has 12 ADRs.
+- Pending, owner input needed: demo URL and GIF; hosting provider (undecided: SPEC 17 asks the owner); confirmation of the license holder and year (MIT, "Agustín Rojas", 2026, written without confirmation); first real-model run of the evals; the real-model smoke of M2 (tool calling in streaming through the provider's OpenAI-compatible endpoint); a decision on whether the public `/admin` stays protected; CI green on GitHub (workflow exists, no run observed from here).

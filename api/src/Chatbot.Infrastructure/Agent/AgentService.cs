@@ -401,6 +401,7 @@ public sealed class AgentService(
     private static (string Message, bool Retryable) Describe(Exception ex) => ex switch
     {
         AgentRunException e => (e.Message, e.Retryable),
+        LlmNotConfiguredException => ("The AI provider is not configured on this server.", false),
         _ when FallbackChatClient.IsRetryable(ex) =>
             ("The assistant is at capacity right now (demo token quota). Please try again in a few minutes.", true),
         _ => ("Something went wrong while reaching the assistant. Check your connection and try again.", true),

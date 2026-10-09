@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using Chatbot.Core.Agent;
+using Chatbot.Api.Security;
 using Chatbot.Core.Domain;
+using Chatbot.Infrastructure.Agent.Tracing;
 using Chatbot.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -16,7 +18,10 @@ public sealed class AdminOptions
     /// <summary>Value the <c>X-Admin-Key</c> header must carry. Blank disables the admin endpoints (503).</summary>
     public string? Key { get; set; }
 
-    /// <summary>Mask <c>customerPhone</c> in the admin responses (<c>+54 11 ****-4444</c>). On by default, for the public demo.</summary>
+    /// <summary>
+    /// Mask phone numbers in the admin responses (<c>+54 11 ****-4444</c>): <c>customerPhone</c>, and any number inside the
+    /// free text (booking notes and order options, handoff reason and summary). On by default, for the public demo.
+    /// </summary>
     public bool MaskPhones { get; set; } = true;
 }
 
@@ -31,7 +36,8 @@ internal static class AdminEndpoints
 
     public static IEndpointRouteBuilder MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
-        var admin = app.MapGroup("/api/admin").AddEndpointFilter(RequireKeyAsync);
+        // The rate limit also bounds how fast a key can be guessed.
+        var admin = app.MapGroup("/api/admin").RequireRateLimiting(AbuseProtection.AdminPolicy).AddEndpointFilter(RequireKeyAsync);
         admin.MapGet("/bookings", ListBookingsAsync);
         admin.MapGet("/handoffs", ListHandoffsAsync);
         return app;
@@ -96,6 +102,7 @@ internal static class AdminEndpoints
             .Take(MaxItems)
             .ToListAsync(ct);
 
+        // customerPhone is masked as a phone; notes and order options are free text the model wrote, so any number in them is masked too.
         var maskPhones = options.Value.MaskPhones;
         return Results.Ok(rows.Select(r => new
         {
@@ -107,14 +114,14 @@ internal static class AdminEndpoints
             customerPhone = maskPhones ? PhoneMasker.Mask(r.CustomerPhone) : r.CustomerPhone,
             slotStartsAt = r.SlotStartsAt,
             offeringName = r.OfferingName,
-            items = r.Items,
+            items = maskPhones && r.Items is { } items ? TracePayload.MaskPhones(items) : r.Items,
             total = r.Total,
-            notes = r.Notes,
+            notes = maskPhones && r.Notes is not null ? PhoneMasker.MaskInText(r.Notes) : r.Notes,
             createdAt = r.CreatedAt,
         }));
     }
 
-    private static async Task<IResult> ListHandoffsAsync(string? niche, ChatbotDbContext db, CancellationToken ct)
+    private static async Task<IResult> ListHandoffsAsync(string? niche, ChatbotDbContext db, IOptions<AdminOptions> options, CancellationToken ct)
     {
         if (!TryResolveNiche(niche, out var filter, out var problem))
             return problem!;
@@ -129,13 +136,15 @@ internal static class AdminEndpoints
             .Take(MaxItems)
             .ToListAsync(ct);
 
+        // Reason and summary are written by the model, and usually repeat what the customer said, phone included.
+        var maskPhones = options.Value.MaskPhones;
         return Results.Ok(rows.Select(r => new
         {
             id = r.Id,
             niche = NicheCatalog.FindByNiche(r.Niche)!.Id,
             sessionId = r.SessionId,
-            reason = r.Reason,
-            summary = r.Summary,
+            reason = maskPhones ? PhoneMasker.MaskInText(r.Reason) : r.Reason,
+            summary = maskPhones ? PhoneMasker.MaskInText(r.Summary) : r.Summary,
             status = r.Status.ToString(),
             createdAt = r.CreatedAt,
         }));

@@ -23,6 +23,7 @@ Failure handling: a message is rejected *before* streaming (JSON problem details
 | Cause | Run | Trace event | `error.retryable` |
 |---|---|---|---|
 | Provider failure, empty answer, unexpected exception | `Error` | `Error` `agent_error` | yes |
+| No primary provider configured (blank `Llm:Primary:ApiKey`); message "The AI provider is not configured on this server." | `Error` | `Error` `agent_error` (`LlmNotConfiguredException`, no settings) | no |
 | `MaxIterations` exhausted | `Error` | `Guardrail` `iteration_limit` | no |
 | Client disconnected | `Error` | `Error` `agent_cancelled` | (nobody to tell) |
 
@@ -152,7 +153,7 @@ Run totals are the sum of the LlmCall events (`run_completed.costUsd` = sum of t
 | 401 | Header missing or wrong (problem details) |
 | 503 | `Admin:Key` (`ADMIN_KEY`) is blank: the endpoints are disabled and say so, they never open |
 
-`Admin:MaskPhones` (`ADMIN_MASK_PHONES`, default `true`) masks `customerPhone` in the bookings list; with `false` and the correct key the full number is returned.
+`Admin:MaskPhones` (`ADMIN_MASK_PHONES`, default `true`) masks `customerPhone` in the bookings list and every phone-like number inside the free text the model wrote: booking `notes` and order `items` options, handoff `reason` and `summary` (a handoff summary usually repeats the number the customer gave). With `false` and the correct key everything is returned in full. The admin requests are rate limited per IP (`RATE_LIMIT_ADMIN_REQUESTS`), so the 429 can come before the 401.
 
 ```
 curl -H 'X-Admin-Key: $ADMIN_KEY' 'http://localhost:8080/api/admin/bookings?niche=dental'
@@ -172,12 +173,13 @@ curl -H 'X-Admin-Key: $ADMIN_KEY' 'http://localhost:8080/api/admin/handoffs'
 
 ## Limits and abuse protection
 
-SPEC 9, implemented in `Chatbot.Api/Security`. Three limits guard `POST /api/sessions/{id}/messages`; each refusal happens **before** the agent creates a run, so a refused message stores nothing and calls no model. `GET` endpoints, `/health` and the admin lists are never limited.
+SPEC 9, implemented in `Chatbot.Api/Security`. Three limits guard `POST /api/sessions/{id}/messages`; each refusal happens **before** the agent creates a run, so a refused message stores nothing and calls no model. The public `GET` endpoints and `/health` are never limited. `/api/admin/*` has its own per-IP limit (below), which also bounds guessing the admin key.
 
 | Order | Limit | Default | Counted by | Code | `Retry-After` | Env var |
 |---|---|---|---|---|---|---|
 | 1 | Per client IP: messages | 30 per 10 min (sliding window) | in memory, per API instance | `ip_rate_limit` | seconds until a slot frees | `RATE_LIMIT_IP_MESSAGES`, `RATE_LIMIT_IP_WINDOW_MINUTES` |
 | 1 | Per client IP: `POST /api/sessions` | 20 per 10 min, own counter | in memory | `ip_rate_limit` | seconds | `RATE_LIMIT_IP_SESSIONS` |
+| 1 | Per client IP: `/api/admin/*` | 60 per 10 min, own counter | in memory | `ip_rate_limit` | seconds | `RATE_LIMIT_ADMIN_REQUESTS` |
 | 2 | Per session | 25 user messages in total | `chat_messages` rows with role `User` | `session_limit` | none (the session is over) | `RATE_LIMIT_SESSION_MESSAGES` |
 | 3 | Global daily cap | 500 runs per UTC day | `agent_runs` started since 00:00 UTC | `daily_cap` | seconds until 00:00 UTC | `RATE_LIMIT_DAILY_REQUESTS` |
 

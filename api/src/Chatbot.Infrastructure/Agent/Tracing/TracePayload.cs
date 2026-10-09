@@ -51,6 +51,15 @@ public static class TracePayload
             : JsonSerializer.SerializeToElement(Clip(raw, MaxChars), Json);
     }
 
+    /// <summary>The same JSON with every phone-like number masked (strings and numbers), without the size limit.</summary>
+    public static JsonElement MaskPhones(JsonElement element)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
+            WriteMasked(writer, element);
+        return JsonDocument.Parse(buffer.ToArray()).RootElement.Clone();
+    }
+
     /// <summary>The first <paramref name="max"/> characters of <paramref name="text"/> plus the marker, or the text itself if it fits. Not masked.</summary>
     public static string Clip(string text, int max)
     {

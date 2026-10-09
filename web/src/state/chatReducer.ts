@@ -127,6 +127,10 @@ function insertEvent(events: TraceEvent[], event: TraceEvent): TraceEvent[] {
   return [...events, event].sort((a, b) => a.sequence - b.sequence)
 }
 
+function knownName(name: string | null): string | null {
+  return name === null || name === 'unknown' ? null : name
+}
+
 function runFromTrace(run: TraceRun): RunState {
   return {
     runId: run.id,
@@ -134,17 +138,15 @@ function runFromTrace(run: TraceRun): RunState {
     status: run.status === 'Ok' ? 'ok' : 'error',
     startedAt: run.startedAt,
     events: [...run.events].sort((a, b) => a.sequence - b.sequence),
-    info:
-      run.status === 'Ok'
-        ? {
-            tokensIn: run.tokensIn,
-            tokensOut: run.tokensOut,
-            costUsd: run.costUsd,
-            durationMs: run.durationMs,
-            model: run.model,
-            provider: run.provider,
-          }
-        : null,
+    // Failed runs keep what the server counted before they died; it writes 'unknown' when no model answered.
+    info: {
+      tokensIn: run.tokensIn,
+      tokensOut: run.tokensOut,
+      costUsd: run.costUsd,
+      durationMs: run.durationMs,
+      model: knownName(run.model),
+      provider: knownName(run.provider),
+    },
   }
 }
 

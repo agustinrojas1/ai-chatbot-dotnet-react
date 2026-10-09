@@ -34,7 +34,7 @@ export interface RunView {
   status: RunState['status']
   statusLabel: RunStatusLabel
   steps: TraceStep[]
-  /** Totals of a finished run; null while it is running or after it failed (no `run_completed`). */
+  /** Totals of a finished run, or up to the failure for a failed one with any spend; null while running. */
   totals: RunTotalsView | null
 }
 
@@ -45,6 +45,8 @@ export interface RunTotalsView {
   durationMs: number
   /** "gemini-3.5-flash-lite via gemini", or whatever is known. */
   model: string | null
+  /** The run failed: these are the totals up to the failure. */
+  failed: boolean
 }
 
 export interface SessionTotals {
@@ -244,6 +246,14 @@ function modelLabel(info: RunInfo | null): string | null {
   return info.model ?? info.provider
 }
 
+function runTotalsView(run: RunState, totals: ReturnType<typeof runTotals>): RunTotalsView | null {
+  if (run.status === 'running') return null
+  const failed = run.status === 'error'
+  const spent = totals.tokensIn > 0 || totals.tokensOut > 0 || totals.costUsd > 0 || totals.durationMs > 0
+  if (failed && !spent) return null
+  return { ...totals, model: modelLabel(run.info), failed }
+}
+
 /** Groups a run for display: title, ordered numbered steps and, once finished, the totals. */
 export function buildRunView(run: RunState): RunView {
   const totals = runTotals(run)
@@ -253,7 +263,7 @@ export function buildRunView(run: RunState): RunView {
     status: run.status,
     statusLabel: runStatusLabel(run.status),
     steps: run.events.map((event, index) => describeStep(event, index + 1)),
-    totals: run.status === 'ok' ? { ...totals, model: modelLabel(run.info) } : null,
+    totals: runTotalsView(run, totals),
   }
 }
 

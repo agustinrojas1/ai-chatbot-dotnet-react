@@ -152,6 +152,52 @@ public class AdminEndpointTests(PostgresFixture postgres)
         Assert.DoesNotContain("5555", await withoutKey.Content.ReadAsStringAsync());
     }
 
+    [Fact]
+    public async Task Phones_inside_free_text_are_masked_with_the_phone_masking_on_and_kept_when_it_is_off()
+    {
+        const string leak = "Luca Rossi, +1 555 222 3344, wants a person";
+        foreach (var maskPhones in new[] { "true", "false" })
+        {
+            var (factory, world) = await StartAsync(maskPhones: maskPhones);
+            using var host = factory;
+            await using (var db = world.NewDb())
+            {
+                var booking = await db.Bookings.SingleAsync(b => b.IdempotencyKey == "k2");
+                booking.Notes = "Call +1 555 222 3344 after 6";
+                booking.Items = JsonSerializer.SerializeToElement(new[] { new { offeringId = Guid.NewGuid(), qty = 1, options = "call 555-222-3344" } });
+                db.HandoffRequests.Add(new HandoffRequest { SessionId = booking.SessionId, Reason = "phone +1 555 222 3344", Summary = leak, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(1) });
+                await db.SaveChangesAsync();
+            }
+
+            var client = factory.CreateClient();
+            // Parsed, because the response writer escapes "+" as \u002B.
+            var bookings = (await (await client.SendAsync(Get("/api/admin/bookings?niche=restaurant"))).Content.ReadFromJsonAsync<JsonElement>())[0];
+            var handoffs = (await (await client.SendAsync(Get("/api/admin/handoffs?niche=restaurant"))).Content.ReadFromJsonAsync<JsonElement>())
+                .EnumerateArray().Select(h => (Reason: h.GetProperty("reason").GetString(), Summary: h.GetProperty("summary").GetString())).First(h => h.Reason!.StartsWith("phone"));
+            var options = bookings.GetProperty("items")[0].GetProperty("options").GetString();
+
+            if (maskPhones == "true")
+            {
+                // The same masking as customerPhone: the middle digits go, the last four stay.
+                foreach (var text in new[] { bookings.GetProperty("notes").GetString(), options, handoffs.Reason, handoffs.Summary })
+                {
+                    Assert.DoesNotContain("222", text);
+                    Assert.Contains("3344", text);
+                    Assert.Contains("***", text);
+                }
+
+                Assert.StartsWith("Luca Rossi, ", handoffs.Summary);
+                Assert.EndsWith(", wants a person", handoffs.Summary);
+            }
+            else
+            {
+                Assert.Equal("Call +1 555 222 3344 after 6", bookings.GetProperty("notes").GetString());
+                Assert.Equal("call 555-222-3344", options);
+                Assert.Equal(leak, handoffs.Summary);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("dental", "Ana Perez")]
     [InlineData("restaurant", "Beto Diaz")]

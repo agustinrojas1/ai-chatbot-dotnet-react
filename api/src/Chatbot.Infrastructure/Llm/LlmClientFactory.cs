@@ -72,15 +72,13 @@ public static class LlmClientFactory
     /// <summary>Stands in for the primary when no API key is configured; every call fails with an actionable message.</summary>
     private sealed class UnconfiguredChatClient : IChatClient
     {
-        private const string Message = "LLM is not configured: set Llm:Primary:ApiKey, Llm:Primary:BaseUrl and Llm:Primary:Model.";
-
         public Task<ChatResponse> GetResponseAsync(
             IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException(Message);
+            throw new LlmNotConfiguredException();
 
         public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
             IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException(Message);
+            throw new LlmNotConfiguredException();
 
         public object? GetService(Type serviceType, object? serviceKey = null) => null;
 

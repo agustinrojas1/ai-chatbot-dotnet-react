@@ -341,10 +341,16 @@ describe('trace hydration', () => {
     expect(state.runs.map((r) => r.runId)).toEqual(['old-ok', 'old-bad', 'live-run'])
     expect(state.runs[0]).toMatchObject({ status: 'ok', info: { costUsd: 0.01, model: 'm' } })
     expect(state.runs[0].events.map((e) => e.sequence)).toEqual([0, 1])
-    expect(state.runs[1]).toMatchObject({ status: 'error', info: null })
+    expect(state.runs[1]).toMatchObject({ status: 'error', info: { tokensIn: 10, costUsd: 0.01, model: 'm' } })
     // The in-flight run is local truth: the server still reads it as Error until it completes.
     expect(state.runs[2]).toMatchObject({ status: 'running' })
     expect(state.runs[2].events).toHaveLength(1)
+  })
+
+  it('a restored failed run keeps its server totals and drops the placeholder model name', () => {
+    const failed = { ...traceRun('bad', 'Error', []), model: 'unknown', provider: 'unknown', tokensIn: 700, costUsd: 0.0003 }
+    const state = chatReducer(ready, { type: 'trace_hydrated', trace: { sessionId: 's1', runs: [failed] } })
+    expect(state.runs[0]).toMatchObject({ status: 'error', info: { tokensIn: 700, costUsd: 0.0003, model: null, provider: null } })
   })
 
   it('trace_hydrated with nothing new returns the same state', () => {

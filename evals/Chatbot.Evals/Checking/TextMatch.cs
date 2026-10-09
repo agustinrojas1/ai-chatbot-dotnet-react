@@ -7,18 +7,33 @@ namespace Chatbot.Evals.Checking;
 /// <summary>How the harness looks for text in a reply: case, accents and typographic apostrophes do not matter.</summary>
 internal static partial class TextMatch
 {
-    /// <summary>
-    /// How many characters before a forbidden phrase are read to see whether it is hedged. A clause
-    /// ("it is not confirmed yet", "once it is confirmed by the business") is short.
-    /// </summary>
-    private const int HedgeWindow = 30;
+    /// <summary>How many characters before a forbidden phrase are read to look for the hedge that governs it.</summary>
+    private const int HedgeWindow = 70;
 
-    /// <summary>
-    /// Words that turn a mention of "confirmed" into the honest thing to say: a negation ("not confirmed yet") or a
-    /// future condition ("once the business confirms it, you will be notified"). Matched on normalized text.
-    /// </summary>
-    [GeneratedRegex(@"(?:\b(?:not|never|no|nor|once|until|when|after|if|unless|till|will be|to be|as soon as|aun no|todavia no|nunca|ni|hasta que|cuando|una vez|apenas|en cuanto|sera|seran|se confirmara)\b|n't\b)")]
-    private static partial Regex Hedge();
+    // A hedge makes a mention of "confirmed" the honest thing to say: a negation ("not confirmed yet"), a future
+    // ("will be confirmed by the clinic") or a condition ("once it is confirmed"). It only counts when it GOVERNS the
+    // phrase: everything between the hedge and the phrase may be an auxiliary or an adverb, nothing else. So
+    // "no issues and is confirmed" is a claim (a "no" that negates something else), and "not confirmed yet" is not.
+    // The patterns are matched at the END of the clause before the phrase, on normalized text (see Normalize).
+    private const string EnglishFiller = @"(?:yet|been|be|being|really|fully|actually|officially|formally|still|currently|already|ever|then|also|just|only|soon|finally|get|gets|got|have|has|had|is|are|was|were|will)";
+    private const string SpanishFiller = @"(?:esta|estan|este|esten|sea|sean|haya|hayan|ha|han|tenga|tengan|sido|fue|fueron|es|son|queda|quedo|quedan|quede|queden|sera|seran|se|encuentra|ya|aun|todavia|siendo|estar|oficialmente|finalmente|formalmente|recien|del|todo)";
+
+    private static readonly Regex HedgeBefore = new(
+        // Negation: "not (yet) confirmed", "isn't confirmed", "has never been confirmed", "no está confirmada", "aún no ha sido confirmada".
+        $@"(?:\b(?:not|never|cannot)|n't|\bno longer)(?:\s+{EnglishFiller})*$"
+        + $@"|\b(?:no|nunca|jamas|tampoco)(?:\s+{SpanishFiller})*$"
+        + @"|\b(?:un|non)-$"
+        // Future: "will be confirmed", "to be confirmed", "should be confirmed", "será confirmada", "pendiente de ser confirmada".
+        + @"|(?:\b(?:will|would|shall|should|can|could|may|might|must|to)|'ll|'d)(?:\s+(?:also|then|soon|only|first|still|just|really|actually|not|never))*\s+be(?:\s+(?:officially|fully|then|formally|finally))*$"
+        + @"|\b(?:sera|seran|quedara|quedaran|estara|estaran)(?:\s+(?:oficialmente|luego|finalmente|formalmente))*$"
+        + @"|\b(?:de|para|a|por|debe|deben|debera|puede|podra|podria|va a|vaya a)\s+ser(?:\s+(?:oficialmente|finalmente|formalmente))*$"
+        // Condition: "once (it) is confirmed", "until the business has confirmed", "cuando esté confirmada". A short
+        // subject may sit between ("once the booking is"), a whole clause may not ("when you arrive your table is").
+        + $@"|\b(?:once|until|till|unless|if|after|as soon as|as long as|in case|provided that)(?:\s+\S+){{0,3}}(?:\s+{EnglishFiller})*$"
+        + $@"|\b(?:when|whenever)(?:\s+\S+){{0,2}}(?:\s+{EnglishFiller})*$"
+        + $@"|\b(?:una vez(?: que)?|hasta que|luego de que|despues de que|siempre que|a menos que|apenas|en cuanto)(?:\s+\S+){{0,3}}(?:\s+{SpanishFiller})*$"
+        + $@"|\bcuando(?:\s+\S+){{0,2}}(?:\s+{SpanishFiller})*$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     [GeneratedRegex(@"\d+(?:[.,]\d+)*")]
     private static partial Regex NumberToken();
@@ -61,21 +76,30 @@ internal static partial class TextMatch
     public static bool MentionsNumber(string reply, decimal value) =>
         NumberToken().Matches(reply).Any(m => ParseNumber(m.Value) == value);
 
-    /// <summary>True when the reply contains <paramref name="phrase"/> outside a negation or a future condition (see <see cref="Hedge"/>).</summary>
+    /// <summary>
+    /// True when <paramref name="reply"/> contains <paramref name="phrase"/> as a whole word (or words: "unconfirmed"
+    /// is not "confirmed") and no hedge in front of it governs it (see <see cref="HedgeBefore"/>).
+    /// </summary>
     public static bool ContainsUnhedged(string reply, string phrase)
     {
         var text = Normalize(reply);
-        var needle = Normalize(phrase);
-
-        for (var at = text.IndexOf(needle, StringComparison.Ordinal); at >= 0; at = text.IndexOf(needle, at + 1, StringComparison.Ordinal))
+        foreach (Match match in WholeWord(Normalize(phrase)).Matches(text))
         {
-            var before = text[Math.Max(0, at - HedgeWindow)..at];
-            var clauseStart = before.LastIndexOfAny(['.', '!', '?', ':', ';', '\n', ',']);
-            if (!Hedge().IsMatch(before[(clauseStart + 1)..]))
+            var before = text[Math.Max(0, match.Index - HedgeWindow)..match.Index].TrimEnd();
+            var clauseStart = before.LastIndexOfAny(['.', '!', '?', ':', ';', '\n', ',', '(', ')']);
+            if (!HedgeBefore.IsMatch(before[(clauseStart + 1)..].TrimStart()))
                 return true;
         }
 
         return false;
+    }
+
+    /// <summary>The phrase, not inside a longer word or number. Only an edge that is a letter or digit needs the check ("$80" ends a number, not a word).</summary>
+    private static Regex WholeWord(string normalizedPhrase)
+    {
+        var first = char.IsLetterOrDigit(normalizedPhrase[0]) ? @"(?<![\p{L}\p{N}])" : "";
+        var last = char.IsLetterOrDigit(normalizedPhrase[^1]) ? @"(?![\p{L}\p{N}])" : "";
+        return new Regex(first + Regex.Escape(normalizedPhrase) + last, RegexOptions.CultureInvariant);
     }
 
     /// <summary>

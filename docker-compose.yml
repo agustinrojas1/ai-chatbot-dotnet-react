@@ -36,6 +36,7 @@ services:
       RateLimit__IpMessages: ${RATE_LIMIT_IP_MESSAGES:-30}
       RateLimit__IpWindowMinutes: ${RATE_LIMIT_IP_WINDOW_MINUTES:-10}
       RateLimit__IpSessions: ${RATE_LIMIT_IP_SESSIONS:-20}
+      RateLimit__AdminRequests: ${RATE_LIMIT_ADMIN_REQUESTS:-60}
       RateLimit__SessionMessages: ${RATE_LIMIT_SESSION_MESSAGES:-25}
       RateLimit__DailyRequests: ${RATE_LIMIT_DAILY_REQUESTS:-500}
       Security__TrustedProxyCidr: ${SECURITY_TRUSTED_PROXY_CIDR:-127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7}

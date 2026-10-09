@@ -208,6 +208,33 @@ public class AgentServiceTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task An_unconfigured_provider_is_a_non_retryable_error_that_says_so_without_leaking_settings()
+    {
+        // The real client the app builds when Llm:Primary:ApiKey is blank.
+        var world = await AgentWorld.CreateAsync(postgres, new ScriptedChatClient());
+        var unconfigured = Chatbot.Infrastructure.Llm.LlmClientFactory.Create(new Chatbot.Infrastructure.Llm.LlmOptions());
+        var sessionId = await world.NewSessionAsync();
+        await using var db = world.NewDb();
+        var service = new AgentService(db, unconfigured, Microsoft.Extensions.Options.Options.Create(world.Options), world.Clock,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AgentService>.Instance);
+
+        var events = new List<AgentEvent>();
+        await foreach (var e in service.RunAsync(sessionId, "hello there"))
+            events.Add(e);
+
+        var error = Assert.IsType<Error>(events[^1]);
+        Assert.False(error.Retryable);
+        Assert.Equal("The AI provider is not configured on this server.", error.Message);
+        Assert.DoesNotContain("Llm:", error.Message);
+
+        var run = await world.SingleRunAsync(sessionId);
+        Assert.Equal(AgentRunStatus.Error, run.Status);
+        var failure = (await world.TraceAsync(run.Id)).Last();
+        Assert.Equal((TraceEventType.Error, "agent_error"), (failure.Type, failure.Name));
+        Assert.DoesNotContain("Llm:", failure.Output!.Value.GetRawText());
+    }
+
+    [Fact]
     public async Task Provider_error_before_any_output_emits_a_friendly_error_and_closes_the_run_in_error()
     {
         var llm = new ScriptedChatClient(Turn.Fail(new HttpRequestException("secret-key-abc exploded", null, HttpStatusCode.ServiceUnavailable)));

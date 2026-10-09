@@ -224,8 +224,30 @@ public class RateLimitTests(PostgresFixture postgres)
             }
         }
 
-        // The admin lists are not limited either (503: no key configured in this host).
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.GetAsync("/api/admin/bookings")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_requests_are_limited_per_ip_so_the_key_cannot_be_guessed_at_full_speed()
+    {
+        var world = await AgentWorld.CreateAsync(postgres, AlwaysOk());
+        using var factory = Start(world, new Dictionary<string, string> { ["Admin:Key"] = "right", ["RateLimit:AdminRequests"] = "3" });
+        var client = factory.CreateClient();
+
+        HttpRequestMessage Guess(string key, string ip)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/admin/bookings");
+            request.Headers.Add("X-Admin-Key", key);
+            request.Headers.Add(FakeRemoteIpStartupFilter.Header, ip);
+            return request;
+        }
+
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(Guess($"wrong-{i}", ClientA))).StatusCode);
+
+        var rejected = await client.SendAsync(Guess("right", ClientA)); // even the right key waits: the limit comes first
+        Assert.Equal("ip_rate_limit", (await ReadLimitAsync(rejected)).Code);
+        Assert.InRange(RetryAfterSeconds(rejected), 1, 600);
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Guess("right", ClientB))).StatusCode);
     }
 
     [Fact]

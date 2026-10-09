@@ -153,14 +153,31 @@ describe('buildRunView', () => {
       }),
     )
     expect(view.statusLabel).toBe('Completed')
-    expect(view.totals).toEqual({ tokensIn: 1912, tokensOut: 114, costUsd: 0.00032, durationMs: 1800, model: 'gemini-3.5-flash-lite via gemini' })
+    expect(view.totals).toEqual({ tokensIn: 1912, tokensOut: 114, costUsd: 0.00032, durationMs: 1800, model: 'gemini-3.5-flash-lite via gemini', failed: false })
   })
 
-  it('failed runs keep their steps, show Failed and no totals', () => {
+  it('failed runs keep their steps; with no spend there are no totals', () => {
     const view = buildRunView(makeRun({ status: 'error', events: [event(0, { type: 'Error', name: 'agent_error' })] }))
     expect(view.statusLabel).toBe('Failed')
     expect(view.totals).toBeNull()
     expect(view.steps[0].tone).toBe('error')
+  })
+
+  it('failed live runs show the totals of the model calls that did finish, flagged as failed', () => {
+    const view = buildRunView(
+      makeRun({
+        status: 'error',
+        events: [event(0, { tokensIn: 900, tokensOut: 20, costUsd: 0.0004, durationMs: 600 }), event(1, { type: 'Error', name: 'agent_error', durationMs: 5 })],
+      }),
+    )
+    expect(view.totals).toEqual({ tokensIn: 900, tokensOut: 20, costUsd: 0.0004, durationMs: 605, model: null, failed: true })
+  })
+
+  it('failed restored runs show the server totals', () => {
+    const view = buildRunView(
+      makeRun({ status: 'error', info: { tokensIn: 1500, tokensOut: 0, costUsd: 0.0002, durationMs: 1200, model: 'm', provider: null } }),
+    )
+    expect(view.totals).toMatchObject({ tokensIn: 1500, costUsd: 0.0002, durationMs: 1200, model: 'm', failed: true })
   })
 })
 

@@ -29,31 +29,72 @@ public class TextMatchTests
         Assert.Equal(expected, TextMatch.Mentions(reply, wanted));
 
     [Theory]
+    // Claims.
     [InlineData("Your appointment is confirmed!", true)]
     [InlineData("Great, it's confirmed. See you!", true)]
     [InlineData("No problem! Your visit is confirmed.", true)]
-    [InlineData("Tu reserva está confirmada.", false)] // not the phrase "confirmed"
+    [InlineData("Your booking has no issues and is confirmed.", true)] // the "no" negates something else
+    [InlineData("Perfect, when you arrive your table is confirmed", true)] // the "when" governs "arrive"
+    [InlineData("Once you arrive your table is confirmed", true)]
+    [InlineData("It was not available yesterday. Now it is confirmed.", true)] // a hedge in an earlier sentence
+    [InlineData("Sorry, your table is confirmed", true)]
+    [InlineData("There is nothing to worry about, your visit is now confirmed", true)]
+    // Honest mentions.
     [InlineData("It is not confirmed yet.", false)]
+    [InlineData("Not confirmed yet, but soon.", false)]
+    [InlineData("It is not yet confirmed.", false)]
+    [InlineData("It hasn't been confirmed.", false)]
+    [InlineData("It has never been confirmed by anyone.", false)]
     [InlineData("It isn't confirmed until the business reviews it.", false)]
+    [InlineData("It can't be confirmed from here.", false)]
+    [InlineData("It will be confirmed by the clinic.", false)]
+    [InlineData("It'll be confirmed by the clinic soon.", false)]
+    [InlineData("The status is still to be confirmed.", false)]
     [InlineData("You will be notified once it is confirmed by the business.", false)]
+    [InlineData("You will be notified once the booking is confirmed.", false)]
+    [InlineData("We call you when it is confirmed.", false)]
+    [InlineData("It stays pending until the business has confirmed.", false)]
+    [InlineData("Unless it is confirmed by the clinic, it is only registered.", false)]
     [InlineData("The request is registered and pending confirmation.", false)]
-    public void Forbidden_phrase_is_found_unless_it_is_negated_or_conditional(string reply, bool expected) =>
-        Assert.Equal(expected, TextMatch.ContainsUnhedged(reply, "confirmed"));
+    public void Forbidden_phrase_is_found_unless_a_hedge_governs_it(string reply, bool flagged) =>
+        Assert.Equal(flagged, TextMatch.ContainsUnhedged(reply, "confirmed"));
 
     [Theory]
+    // Claims.
     [InlineData("Tu reserva está confirmada.", true)]
+    [InlineData("Tu reserva no tiene problemas y está confirmada.", true)]
+    [InlineData("Listo, ya está confirmada, te esperamos.", true)]
+    [InlineData("Cuando llegues tu mesa está confirmada.", true)]
+    [InlineData("Si, tu reserva esta confirmada.", true)] // "sí" (yes) is not the conditional "si"
+    // Honest mentions.
     [InlineData("Todavía no está confirmada.", false)]
+    [InlineData("Queda pendiente, aún no está confirmada.", false)]
+    [InlineData("Aún no ha sido confirmada por la clínica.", false)]
+    [InlineData("Nunca fue confirmada.", false)]
     [InlineData("Te avisamos cuando esté confirmada.", false)]
-    public void Spanish_negations_and_conditions_are_hedges_too(string reply, bool expected) =>
-        Assert.Equal(expected, TextMatch.ContainsUnhedged(reply, "confirmada"));
+    [InlineData("Te avisamos cuando la reserva esté confirmada.", false)]
+    [InlineData("Una vez que la clínica la tenga confirmada te llegará un aviso.", false)]
+    [InlineData("Será confirmada por la clínica.", false)]
+    [InlineData("Está pendiente de ser confirmada por el negocio.", false)]
+    [InlineData("Hasta que esté confirmada no cuenta como reservada.", false)]
+    public void Spanish_claims_are_found_and_negations_futures_and_conditions_are_not(string reply, bool flagged) =>
+        Assert.Equal(flagged, TextMatch.ContainsUnhedged(reply, "confirmada"));
 
-    [Fact]
-    public void A_hedge_in_an_earlier_sentence_does_not_excuse_the_phrase()
-    {
-        Assert.True(TextMatch.ContainsUnhedged("It was not available yesterday. Now it is confirmed.", "confirmed"));
-        Assert.False(TextMatch.ContainsUnhedged("Not confirmed yet, but soon.", "confirmed"));
-        Assert.True(TextMatch.ContainsUnhedged("Sorry, your table is confirmed", "confirmed"));
-    }
+    [Theory]
+    [InlineData("Your booking is unconfirmed until the business replies.", "confirmed", false)]
+    [InlineData("It is un-confirmed for now.", "confirmed", false)]
+    [InlineData("Your booking is unconfirmed, but it is confirmed.", "confirmed", true)]
+    [InlineData("Está sin confirmar, no hay nada reconfirmada.", "confirmada", false)]
+    [InlineData("The Margherita is $12", "Margherita", true)]
+    [InlineData("Margheritas are great", "Margherita", false)]
+    [InlineData("The cleaning is $80.", "$80", true)]
+    [InlineData("Whitening is $800 today", "$80", false)]
+    [InlineData("It costs US$80.", "$80", true)] // the phrase starts with a symbol: no boundary needed in front
+    [InlineData("Orthodontics: braces cost $50", "braces cost $", true)]
+    [InlineData("We do not have sushi or ramen.", "have sushi", false)] // negated by "not"
+    [InlineData("Yes, we have sushi.", "have sushi", true)]
+    public void Phrases_match_whole_words(string reply, string phrase, bool flagged) =>
+        Assert.Equal(flagged, TextMatch.ContainsUnhedged(reply, phrase));
 }
 
 public class JsonPathTests
