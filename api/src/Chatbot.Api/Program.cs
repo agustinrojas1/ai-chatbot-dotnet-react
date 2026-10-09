@@ -1,3 +1,7 @@
+using Chatbot.Infrastructure;
+using Chatbot.Infrastructure.Persistence;
+using Chatbot.Infrastructure.Seeding;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 
@@ -11,10 +15,20 @@ builder.Services.AddCors(o => o.AddPolicy(CorsPolicy, p => p
     .AllowAnyHeader()
     .AllowAnyMethod()));
 
+builder.Services.AddInfrastructure(builder.Configuration);
+
 builder.Services.AddHealthChecks()
     .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
 
 var app = builder.Build();
+
+// Development only: apply migrations and seed at startup. Production applies migrations as an explicit step.
+if (app.Environment.IsDevelopment())
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<ChatbotDbContext>().Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<IDatabaseSeeder>().SeedAsync(CancellationToken.None);
+}
 
 app.UseCors(CorsPolicy);
 
