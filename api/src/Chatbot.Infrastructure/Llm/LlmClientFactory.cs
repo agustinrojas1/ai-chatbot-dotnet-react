@@ -60,6 +60,7 @@ public static class LlmClientFactory
         }
 
         var clientOptions = new OpenAIClientOptions { Endpoint = baseUrl };
+        GeminiThoughtSignaturePolicy.AddTo(clientOptions, baseUrl);
         if (retries is { } maxRetries)
         {
             clientOptions.RetryPolicy = new ClientRetryPolicy(maxRetries);

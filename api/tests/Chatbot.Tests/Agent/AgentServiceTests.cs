@@ -64,7 +64,7 @@ public class AgentServiceTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Language_is_saved_and_the_language_instruction_is_the_last_message_sent()
+    public async Task Language_is_saved_and_the_language_instruction_ends_the_system_prompt()
     {
         var llm = new ScriptedChatClient(Turn.Reply("a"), Turn.Reply("b"), Turn.Reply("c"));
         var world = await AgentWorld.CreateAsync(postgres, llm);
@@ -83,12 +83,34 @@ public class AgentServiceTests(PostgresFixture postgres)
             "Reply ONLY in Spanish. Translate catalog details if needed.",
             "Reply ONLY in English. Translate catalog details if needed.",
         ];
-        Assert.Equal(expected, llm.Calls.Select(call => call[^1].Text));
+        // The instruction is the last paragraph of the one system message (ADR-014), after the business prompt.
+        Assert.Equal(expected.Select(e => AgentService.LanguageLabel + e), llm.Calls.Select(call => call[0].Text.Split("\n\n")[^1]));
         Assert.All(llm.Calls, call =>
         {
-            Assert.Equal(ChatRole.System, call[^1].Role);
             Assert.Equal(ChatRole.System, call[0].Role);
             Assert.Contains("Session status: Active", call[0].Text);
+            Assert.NotEqual(ChatRole.System, call[^1].Role);
+        });
+    }
+
+    [Fact]
+    public async Task The_model_receives_exactly_one_system_message_even_when_tools_ran_in_earlier_turns()
+    {
+        var llm = new ScriptedChatClient(
+            Turn.Call(AgentToolFactory.SearchCatalog, new() { ["query"] = "cleaning" }),
+            Turn.Reply("A cleaning is available."),
+            Turn.Reply("Done."));
+        var world = await AgentWorld.CreateAsync(postgres, llm);
+        var sessionId = await world.NewSessionAsync();
+
+        await world.RunAsync(sessionId, "How much is a cleaning?");
+        await world.RunAsync(sessionId, "Yes, book it");
+
+        // Gemini drops system messages when there is more than one (ADR-014): every call has one, and it is first.
+        Assert.All(llm.Calls, call =>
+        {
+            Assert.Equal(1, call.Count(m => m.Role == ChatRole.System));
+            Assert.Equal(ChatRole.System, call[0].Role);
         });
     }
 
@@ -115,7 +137,7 @@ public class AgentServiceTests(PostgresFixture postgres)
         await world.RunAsync(sessionId, "latest question");
 
         var sent = llm.Calls.Single();
-        Assert.Equal(6, sent.Count);
+        Assert.Equal(5, sent.Count); // system prompt + 4 history messages
         Assert.Equal(
             [(ChatRole.Assistant, "old 8"), (ChatRole.User, "old 9"), (ChatRole.Assistant, "old 10"), (ChatRole.User, "latest question")],
             sent.Skip(1).Take(4).Select(m => (m.Role, m.Text)));
@@ -346,7 +368,6 @@ public class AgentServiceTests(PostgresFixture postgres)
                 "tool:FunctionResultContent",
                 "assistant:TextContent",
                 "user:TextContent",
-                "system:TextContent",
             ],
             sent.Select(m => $"{m.Role}:{string.Join(",", m.Contents.Select(c => c.GetType().Name))}"));
 
@@ -380,7 +401,7 @@ public class AgentServiceTests(PostgresFixture postgres)
         await world.RunAsync(sessionId, "second question");
 
         // Window of 2 text messages = the assistant answer and the new question. The tool exchange is older than both.
-        Assert.Equal([ChatRole.Assistant, ChatRole.User, ChatRole.System], llm.Calls[2].Skip(1).Select(m => m.Role));
+        Assert.Equal([ChatRole.Assistant, ChatRole.User], llm.Calls[2].Skip(1).Select(m => m.Role));
     }
 
     [Fact]

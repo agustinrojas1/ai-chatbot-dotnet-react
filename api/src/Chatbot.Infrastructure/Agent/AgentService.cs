@@ -29,6 +29,9 @@ public sealed class AgentService(
     ILogger<AgentService> logger)
 {
     private const string UnknownModel = "unknown";
+
+    /// <summary>Starts the last paragraph of the system prompt, so the language rule is easy to find and outranks the persona text.</summary>
+    public const string LanguageLabel = "LANGUAGE (highest priority): ";
     private const int ModelColumnLength = 200; // agent_runs.Model
 
     /// <summary>Consecutive tool rounds that may fail with an exception before the run is aborted.</summary>
@@ -206,12 +209,11 @@ public sealed class AgentService(
 
         var history = await LoadHistoryAsync(session.Id, ct);
 
-        // The language instruction goes last so it is the freshest thing the model reads (SPEC 7.3).
+        // Exactly one system message, first (ADR-014): the language instruction is its final paragraph.
         List<AiMessage> messages =
         [
-            new(ChatRole.System, PromptBuilder.BuildSystemPrompt(business, session.Status, now)),
+            new(ChatRole.System, SystemPrompt(business, session.Status, language, now)),
             .. history.SelectMany(ToModelMessages),
-            new(ChatRole.System, PromptBuilder.LanguageInstruction(language)),
         ];
 
         var tools = new ToolContext(business.Id, session.Id, business.Timezone);
@@ -238,6 +240,14 @@ public sealed class AgentService(
             .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
             .ToListAsync(ct);
     }
+
+    /// <summary>
+    /// The business prompt followed by the language instruction (SPEC 7.3), in ONE system message. Gemini's
+    /// OpenAI-compatible endpoint silently drops system messages when a request has more than one, so the instruction
+    /// cannot be a second, trailing system message (ADR-014).
+    /// </summary>
+    private static string SystemPrompt(Business business, SessionStatus status, Language language, DateTimeOffset now) =>
+        $"{PromptBuilder.BuildSystemPrompt(business, status, now)}\n\n{LanguageLabel}{PromptBuilder.LanguageInstruction(language)}";
 
     private static IEnumerable<AiMessage> ToModelMessages(DbMessage message) => message.Role switch
     {
