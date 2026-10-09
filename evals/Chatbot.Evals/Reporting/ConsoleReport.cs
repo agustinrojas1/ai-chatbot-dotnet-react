@@ -15,7 +15,7 @@ internal static class ConsoleReport
         {
             summary.RunName(r),
             CaseLoader.Name(r.Transcript.Case.Category),
-            r.Passed ? "PASS" : "FAIL",
+            r.NotRun ? "NOT RUN" : r.Passed ? "PASS" : "FAIL",
             Reasons(r),
         }).ToList();
 
@@ -28,6 +28,12 @@ internal static class ConsoleReport
             .. summary.Categories.Select(c => new[] { CaseLoader.Name(c.Category), $"{c.Passed}/{c.Runs}", Percent(c.Rate) }),
             ["OVERALL", $"{summary.Passed}/{summary.Runs}", Percent(summary.PassRate)],
         ]);
+
+        if (summary.NotRun.Count > 0)
+        {
+            output.WriteLine();
+            output.WriteLine($"NOT RUN: {summary.NotRun.Count} of {summary.Results.Count} run(s) were refused by the provider (quota) and are left out of every rate above. Run them again later, or with a higher --min-interval-ms.");
+        }
 
         output.WriteLine();
         output.WriteLine($"Tokens: {summary.TokensIn:N0} in, {summary.TokensOut:N0} out. Cost: ${summary.CostUsd.ToString("0.0000", CultureInfo.InvariantCulture)}");

@@ -14,7 +14,7 @@ dotnet run --project evals/Chatbot.Evals
 
 `Llm__Primary__BaseUrl` defaults to Gemini's OpenAI-compatible endpoint; any other compatible endpoint works (set `Llm__Primary__BaseUrl`). `Llm__Fallback__*` is honored too. The `LLM_PRIMARY_*` names of `.env.example` also work (`set -a; source .env; set +a`).
 
-Options (after `--`): `--filter <text>` (id contains), `--category <name>`, `--niche realestate|dental|restaurant`, `--model <name>`, `--repeat <k>` (k runs per case, because a model is not deterministic), `--fake`, `--cases <dir>`, `--results <dir>`. Example: `dotnet run --project evals/Chatbot.Evals -- --category booking --repeat 3`.
+Options (after `--`): `--filter <text>` (id contains), `--category <name>`, `--niche realestate|dental|restaurant`, `--model <name>`, `--repeat <k>` (k runs per case, because a model is not deterministic), `--min-interval-ms <n>` (see below), `--fake`, `--cases <dir>`, `--results <dir>`. Example: `dotnet run --project evals/Chatbot.Evals -- --category booking --repeat 3`.
 
 Without a model, to check that the harness itself works:
 
@@ -24,7 +24,15 @@ dotnet run --project evals/Chatbot.Evals -- --fake
 
 The fake model calls `search_catalog` and answers a canned sentence. Most cases fail on purpose; the report says it is a fake.
 
-Exit code: `0` MVP targets met, `1` not met, `2` could not run (bad arguments, invalid case file, no model configured, no database).
+Exit code: `0` MVP targets met, `1` not met, `2` could not run (bad arguments, invalid case file, no model configured, no database), `3` targets met by the runs that were judged but some runs were not run (provider quota, see below).
+
+## Provider rate limits
+
+Free tiers answer `429` long before 36 conversations are over. The harness wraps the model client (below the agent pipeline; the product code is untouched) so that this does not look like a bug of the agent:
+
+- **Spacing:** at least `--min-interval-ms` (default 2000) between the starts of two model calls. Not applied with `--fake`.
+- **Retries:** a call that gets `429` before its first token waits (the provider's `Retry-After` if it sends one, otherwise 15 s, 30 s, 60 s, 60 s, 60 s) and is tried again, up to 5 times, printing one line each time. A `Retry-After` over 5 minutes (a spent daily quota) is not waited for.
+- **Not run, not failed:** if the provider still refuses after the retries, the case is reported as `NOT RUN` with the reason `infrastructure: provider quota`. It is left out of the pass rates and of the MVP targets, and listed under "Not run" in the report; its tokens still count. Run those cases again later (`--filter`, `--category`) or raise `--min-interval-ms`. Any other provider error (5xx, 401...) is a normal failure.
 
 ## Output
 

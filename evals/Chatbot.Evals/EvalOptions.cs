@@ -1,4 +1,5 @@
 using Chatbot.Evals.Cases;
+using Chatbot.Evals.Running;
 
 namespace Chatbot.Evals;
 
@@ -17,6 +18,9 @@ internal sealed record EvalOptions
           --niche <name>      only one business (realestate, dental, restaurant)
           --model <name>      model of the primary provider (overrides Llm__Primary__Model)
           --repeat <k>        run every case k times (models are not deterministic)
+          --min-interval-ms <n>  minimum time between two model calls (default 2000), to stay under
+                              the provider's rate limit. A 429 is waited out (Retry-After, else 15 s,
+                              30 s, 60 s...) and retried up to 5 times. Not used with --fake.
           --fake              use a scripted fake model instead of a real one: proves the harness
                               runs offline, most cases fail on purpose
           --cases <dir>       directory with the *.yaml cases (default: evals/cases)
@@ -31,6 +35,7 @@ internal sealed record EvalOptions
     public EvalNiche? Niche { get; init; }
     public string? Model { get; init; }
     public int Repeat { get; init; } = 1;
+    public int MinIntervalMs { get; init; } = ModelCallPolicy.DefaultMinIntervalMs;
     public bool Fake { get; init; }
     public string? CasesDirectory { get; init; }
     public string? ResultsDirectory { get; init; }
@@ -51,6 +56,7 @@ internal sealed record EvalOptions
                 "--niche" => options with { Niche = CaseLoader.ParseNiche(Value()) ?? throw new UsageException($"Unknown niche '{args[i]}'.") },
                 "--model" => options with { Model = Value() },
                 "--repeat" => options with { Repeat = int.TryParse(Value(), out var k) && k >= 1 ? k : throw new UsageException("--repeat must be a whole number of at least 1.") },
+                "--min-interval-ms" => options with { MinIntervalMs = int.TryParse(Value(), out var ms) && ms >= 0 ? ms : throw new UsageException("--min-interval-ms must be a whole number of milliseconds, 0 or more.") },
                 "--cases" => options with { CasesDirectory = Value() },
                 "--results" => options with { ResultsDirectory = Value() },
                 "--fake" => options with { Fake = true },

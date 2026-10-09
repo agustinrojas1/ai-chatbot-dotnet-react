@@ -22,13 +22,18 @@ internal sealed record TargetResult(string Name, double Required, int Runs, int 
     public bool Met => Actual >= Required;
 }
 
-/// <summary>The numbers of a run: pass rate by category and overall, usage, and the MVP targets.</summary>
+/// <summary>
+/// The numbers of a run: pass rate by category and overall, usage, and the MVP targets. Runs the provider refused
+/// (<see cref="CaseResult.NotRun"/>) are left out of every rate and listed apart: they are not failures of the agent.
+/// </summary>
 internal sealed class EvalSummary
 {
     private EvalSummary(IReadOnlyList<CaseResult> results)
     {
         Results = results;
-        Categories = results
+        Executed = results.Where(r => !r.NotRun).ToList();
+        NotRun = results.Where(r => r.NotRun).ToList();
+        Categories = Executed
             .GroupBy(r => r.Transcript.Case.Category)
             .OrderBy(g => g.Key)
             .Select(g => new CategoryStats(g.Key, g.Count(), g.Count(r => r.Passed)))
@@ -52,7 +57,16 @@ internal sealed class EvalSummary
 
     public static EvalSummary Create(IReadOnlyList<CaseResult> results) => new(results);
 
+    /// <summary>Every run, in the order they happened.</summary>
     public IReadOnlyList<CaseResult> Results { get; }
+
+    /// <summary>The runs that were judged.</summary>
+    public IReadOnlyList<CaseResult> Executed { get; }
+
+    /// <summary>The runs the provider refused.</summary>
+    public IReadOnlyList<CaseResult> NotRun { get; }
+
+    public IReadOnlyList<CaseResult> Failed => Executed.Where(r => !r.Passed).ToList();
     public IReadOnlyList<CategoryStats> Categories { get; }
     public IReadOnlyList<TargetResult> Targets { get; }
     public IReadOnlyList<string> Models { get; }
@@ -61,8 +75,8 @@ internal sealed class EvalSummary
     public long TokensOut { get; }
     public decimal CostUsd { get; }
 
-    public int Runs => Results.Count;
-    public int Passed => Results.Count(r => r.Passed);
+    public int Runs => Executed.Count;
+    public int Passed => Executed.Count(r => r.Passed);
     public double PassRate => Runs == 0 ? 0 : (double)Passed / Runs;
     public bool TargetsMet => Targets.All(t => t.Met);
 
@@ -72,7 +86,7 @@ internal sealed class EvalSummary
 
     private TargetResult Target(string name, double required, CheckDimension dimension)
     {
-        var withChecks = Results.Where(r => r.Checks.Any(c => c.Dimension == dimension)).ToList();
+        var withChecks = Executed.Where(r => r.Checks.Any(c => c.Dimension == dimension)).ToList();
         var passed = withChecks.Count(r => r.Checks.Where(c => c.Dimension == dimension).All(c => c.Passed));
         return new TargetResult(name, required, withChecks.Count, passed);
     }

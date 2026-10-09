@@ -30,7 +30,13 @@ internal sealed record CheckResult(CheckDimension Dimension, string Name, bool P
 /// <summary>The verdict on one run: it passes when every check passes.</summary>
 internal sealed record CaseResult(Transcript Transcript, IReadOnlyList<CheckResult> Checks)
 {
-    public bool Passed => Checks.All(c => c.Passed);
+    /// <summary>The provider refused a turn (quota) after every retry: nothing can be said about the agent, so the run is neither passed nor failed.</summary>
+    public bool NotRun => Transcript.NotRunReason is not null;
+
+    public bool Passed => !NotRun && Checks.All(c => c.Passed);
+
+    /// <summary>It ran and at least one check failed.</summary>
+    public bool Failed => !NotRun && !Passed;
 
     public IEnumerable<CheckResult> Failures => Checks.Where(c => !c.Passed);
 
@@ -63,6 +69,12 @@ internal static class Evaluator
         var evalCase = transcript.Case;
         var turns = transcript.Turns;
         var checks = new List<CheckResult>();
+
+        if (transcript.NotRunReason is { } reason)
+        {
+            var refused = transcript.Turns.Select((t, i) => (Turn: t, Number: i + 1)).First(x => x.Turn.InfrastructureError is not null);
+            return new CaseResult(transcript, [new CheckResult(CheckDimension.Execution, reason, false, $"turn {refused.Number}: {refused.Turn.Error}")]);
+        }
 
         CheckExecution(turns, checks);
         CheckLanguage(transcript, checks);

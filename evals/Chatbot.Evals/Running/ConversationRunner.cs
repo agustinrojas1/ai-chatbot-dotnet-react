@@ -16,6 +16,8 @@ namespace Chatbot.Evals.Running;
 /// </summary>
 internal sealed class ConversationRunner(IServiceProvider services)
 {
+    public const string ProviderQuota = "infrastructure: provider quota";
+
     private readonly Dictionary<EvalNiche, IReadOnlyList<string>> _protectedTerms = [];
 
     public async Task<Transcript> RunAsync(EvalCase evalCase, int iteration, CancellationToken ct)
@@ -65,6 +67,8 @@ internal sealed class ConversationRunner(IServiceProvider services)
         var toolCalls = new List<ToolCallRecord>();
         string? error = null;
         RunCompleted? completed = null;
+        var monitor = services.GetService<QuotaMonitor>();
+        var exhaustedBefore = monitor?.Exhausted ?? 0;
 
         try
         {
@@ -100,10 +104,13 @@ internal sealed class ConversationRunner(IServiceProvider services)
         if (error is null && completed is null)
             error = "the agent produced no result";
 
+        var refusedByProvider = error is not null && monitor is not null && monitor.Exhausted > exhaustedBefore;
+
         var (bookings, handoffs) = await SessionStateAsync(sessionId, ct);
         return new TurnResult
         {
             User = say,
+            InfrastructureError = refusedByProvider ? ProviderQuota : null,
             Reply = reply.ToString().Trim(),
             ToolCalls = toolCalls,
             Error = error,

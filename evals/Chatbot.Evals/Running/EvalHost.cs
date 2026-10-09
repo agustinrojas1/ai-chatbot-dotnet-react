@@ -7,6 +7,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
 
 namespace Chatbot.Evals.Running;
@@ -49,13 +50,20 @@ internal static class EvalConfiguration
 internal static class EvalHost
 {
     /// <param name="llm">Replaces the configured model client (the <c>--fake</c> run and the tests); null uses <c>Llm</c> from the configuration.</param>
-    public static ServiceProvider Build(IConfiguration configuration, IChatClient? llm = null)
+    /// <param name="policy">Rate-limit handling around the model client (see <see cref="QuotaGuardChatClient"/>); null leaves the client as it is.</param>
+    public static ServiceProvider Build(IConfiguration configuration, IChatClient? llm = null, ModelCallPolicy? policy = null)
     {
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddInfrastructure(configuration);
-        if (llm is not null)
-            services.AddKeyedSingleton(LlmClientFactory.ServiceKey, llm);
+        services.AddSingleton<QuotaMonitor>();
+
+        // The last registration of a key wins: this replaces the client AddInfrastructure registered, without touching it.
+        services.AddKeyedSingleton<IChatClient>(LlmClientFactory.ServiceKey, (sp, _) =>
+        {
+            var inner = llm ?? LlmClientFactory.Create(sp.GetRequiredService<IOptions<LlmOptions>>().Value, sp.GetService<ILoggerFactory>());
+            return policy is null ? inner : new QuotaGuardChatClient(inner, policy, sp.GetRequiredService<QuotaMonitor>());
+        });
         return services.BuildServiceProvider();
     }
 

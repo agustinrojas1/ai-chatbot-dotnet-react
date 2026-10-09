@@ -191,6 +191,131 @@ public class ReportTests
     }
 }
 
+public class NotRunTests
+{
+    private static EvalCase NewCase(string id, string category, string extra)
+    {
+        var yaml = $"- id: {id}\n  category: {category}\n  niche: dental\n  turns: [\"hello\"]\n" + string.Concat(extra.Split('\n').Select(l => $"  {l}\n"));
+        return CaseLoader.Parse("test.yaml", yaml).Single();
+    }
+
+    private static CaseResult Judge(EvalCase evalCase, TurnResult turn) =>
+        Evaluator.Evaluate(new Transcript(evalCase, 1, [turn with { User = "hello" }], []));
+
+    private static TurnResult Refused() => new()
+    {
+        User = "hello",
+        Error = "The assistant is at capacity right now (demo token quota).",
+        InfrastructureError = ConversationRunner.ProviderQuota,
+        TokensIn = 40,
+    };
+
+    private static readonly RunInfo Info = new(DateTimeOffset.UtcNow, TimeSpan.Zero, false, 1, null, null, null);
+
+    private static (EvalSummary Summary, CaseResult Refused) Sample()
+    {
+        var search = NewCase("search-ok", "search", "expectToolCalls: [{ name: search_catalog }]");
+        var booking = NewCase("booking-refused", "booking", "expectToolCalls: [{ name: create_booking }]\nexpectLanguage: en");
+        var refused = Judge(booking, Refused());
+        var passed = Judge(search, Turn("It costs $80.", Call("search_catalog")));
+        var failed = Judge(NewCase("search-bad", "search", "expectToolCalls: [{ name: search_catalog }]"), Turn("No idea."));
+        return (EvalSummary.Create([passed, refused, failed]), refused);
+    }
+
+    [Fact]
+    public void A_refused_run_is_neither_passed_nor_failed_and_carries_the_reason()
+    {
+        var (_, refused) = Sample();
+
+        Assert.True(refused.NotRun);
+        Assert.False(refused.Passed);
+        Assert.False(refused.Failed);
+        var check = Assert.Single(refused.Checks);
+        Assert.Equal("infrastructure: provider quota", check.Name);
+        Assert.Equal("turn 1: The assistant is at capacity right now (demo token quota).", check.Detail);
+    }
+
+    [Fact]
+    public void It_is_left_out_of_every_denominator_and_listed_apart()
+    {
+        var (summary, refused) = Sample();
+
+        Assert.Equal((3, 2, 1, 1), (summary.Results.Count, summary.Runs, summary.Passed, summary.NotRun.Count));
+        Assert.Equal(0.5, summary.PassRate);
+        Assert.Equal([EvalCategory.Search], summary.Categories.Select(c => c.Category)); // no booking row at all
+        Assert.Equal((2, 1), (summary.Categories[0].Runs, summary.Categories[0].Passed));
+        Assert.Equal(["search-bad"], summary.Failed.Select(r => r.Transcript.Case.Id));
+        Assert.Same(refused, Assert.Single(summary.NotRun));
+
+        // The refused run has language and tool checks in its case, but they are not measured: 1 of 2 runs pass the tool target.
+        var tools = summary.Targets.Single(t => t.Name.StartsWith("Correct"));
+        Assert.Equal((2, 1), (tools.Runs, tools.Passed));
+        var language = summary.Targets.Single(t => t.Name.StartsWith("Language"));
+        Assert.Equal(0, language.Runs);
+        Assert.True(language.Met);
+    }
+
+    [Fact]
+    public void Its_tokens_still_count_in_the_usage()
+    {
+        var (summary, _) = Sample();
+
+        Assert.Equal(40 + 100 + 100, summary.TokensIn);
+    }
+
+    [Fact]
+    public void A_run_where_everything_was_refused_has_nothing_to_judge()
+    {
+        var booking = NewCase("booking-refused", "booking", "expectLanguage: en");
+
+        var summary = EvalSummary.Create([Judge(booking, Refused())]);
+
+        Assert.Equal((0, 0), (summary.Runs, summary.Passed));
+        Assert.Empty(summary.Categories);
+        Assert.Equal(0, summary.PassRate);
+    }
+
+    [Fact]
+    public void The_console_shows_not_run_and_explains_the_exclusion()
+    {
+        var writer = new StringWriter();
+
+        ConsoleReport.Write(writer, Sample().Summary);
+        var text = writer.ToString();
+
+        Assert.Matches(@"booking-refused\s+booking\s+NOT RUN\s+infrastructure: provider quota", text);
+        Assert.Matches(@"OVERALL\s+1/2\s+50%", text);
+        Assert.Contains("NOT RUN: 1 of 3 run(s) were refused by the provider (quota)", text);
+        Assert.DoesNotContain("booking ", text.Split("Pass rate by category")[1].Split("Tokens:")[0]); // no category row for it
+    }
+
+    [Fact]
+    public void The_markdown_lists_not_run_runs_apart_from_failures()
+    {
+        var markdown = MarkdownReport.Render(Sample().Summary, Info);
+
+        Assert.Contains("- **Runs:** 3 (3 cases, repeat 1): 2 judged, 1 not run", markdown);
+        Assert.Contains("> **Incomplete run.** 1 run(s) were refused by the provider", markdown);
+        Assert.Contains("| booking-refused | booking | dental | NOT RUN |", markdown);
+        Assert.Contains("## Failures (1)", markdown);
+        Assert.DoesNotContain("### booking-refused", markdown);
+        Assert.Contains("## Not run (1)", markdown);
+        Assert.Contains("- booking-refused: infrastructure: provider quota, turn 1: The assistant is at capacity", markdown);
+        Assert.Contains("| **Overall** | **1/2** | **50%** |", markdown);
+    }
+
+    [Fact]
+    public void A_complete_run_has_an_empty_not_run_section_and_no_warning()
+    {
+        var search = NewCase("search-ok", "search", "expectToolCalls: [{ name: search_catalog }]");
+
+        var markdown = MarkdownReport.Render(EvalSummary.Create([Judge(search, Turn("ok", Call("search_catalog")))]), Info);
+
+        Assert.Contains("## Not run (0)", markdown);
+        Assert.DoesNotContain("Incomplete run", markdown);
+    }
+}
+
 public class EvalOptionsTests
 {
     [Fact]
@@ -207,12 +332,15 @@ public class EvalOptionsTests
     {
         var options = EvalOptions.Parse([]);
 
-        Assert.Equal((1, false), (options.Repeat, options.Fake));
+        Assert.Equal((1, false, 2000), (options.Repeat, options.Fake, options.MinIntervalMs));
         Assert.Null(options.Filter);
+        Assert.Equal(0, EvalOptions.Parse(["--min-interval-ms", "0"]).MinIntervalMs);
     }
 
     [Theory]
     [InlineData("--repeat", "0", "--repeat must be")]
+    [InlineData("--min-interval-ms", "-5", "--min-interval-ms must be")]
+    [InlineData("--min-interval-ms", "slow", "--min-interval-ms must be")]
     [InlineData("--repeat", "x", "--repeat must be")]
     [InlineData("--category", "cooking", "Unknown category 'cooking'")]
     [InlineData("--niche", "bakery", "Unknown niche 'bakery'")]

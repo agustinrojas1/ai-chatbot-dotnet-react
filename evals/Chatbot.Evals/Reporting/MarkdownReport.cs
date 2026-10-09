@@ -23,10 +23,16 @@ internal static class MarkdownReport
         md.AppendLine();
         md.AppendLine($"- **Model:** {Join(summary.Models)}{(info.Fake ? " (scripted fake, not a real model: the numbers say nothing about quality)" : "")}");
         md.AppendLine($"- **Provider:** {Join(summary.Providers)}");
-        md.AppendLine($"- **Runs:** {summary.Runs} ({summary.Results.Select(r => r.Transcript.Case.Id).Distinct().Count()} cases, repeat {info.Repeat})");
+        md.AppendLine($"- **Runs:** {summary.Results.Count} ({summary.Results.Select(r => r.Transcript.Case.Id).Distinct().Count()} cases, repeat {info.Repeat}): {summary.Runs} judged, {summary.NotRun.Count} not run");
         md.AppendLine($"- **Selection:** {Selection(info)}");
         md.AppendLine($"- **Duration:** {info.Duration.TotalSeconds.ToString("0.#", inv)} s");
         md.AppendLine();
+
+        if (summary.NotRun.Count > 0)
+        {
+            md.AppendLine($"> **Incomplete run.** {summary.NotRun.Count} run(s) were refused by the provider (quota) after every retry. They are left out of every rate below and listed under \"Not run\"; they say nothing about the agent.");
+            md.AppendLine();
+        }
 
         md.AppendLine("## MVP targets");
         md.AppendLine();
@@ -62,14 +68,25 @@ internal static class MarkdownReport
             var reasons = string.Join("<br>", failed.Take(MaxReasonsInTable).Select(f => Cell(Evaluator.Shorten(f.ToString(), 220))));
             if (failed.Count > MaxReasonsInTable)
                 reasons += $"<br>(+{failed.Count - MaxReasonsInTable} more, see Failures)";
-            md.AppendLine($"| {summary.RunName(result)} | {CaseLoader.Name(evalCase.Category)} | {CaseLoader.Name(evalCase.Niche)} | {(result.Passed ? "PASS" : "**FAIL**")} | {reasons} |");
+            md.AppendLine($"| {summary.RunName(result)} | {CaseLoader.Name(evalCase.Category)} | {CaseLoader.Name(evalCase.Niche)} | {(result.NotRun ? "NOT RUN" : result.Passed ? "PASS" : "**FAIL**")} | {reasons} |");
         }
 
-        var failures = summary.Results.Where(r => !r.Passed).ToList();
+        var failures = summary.Failed;
         md.AppendLine();
         md.AppendLine($"## Failures ({failures.Count})");
         foreach (var result in failures)
             AppendFailure(md, summary, result);
+
+        md.AppendLine();
+        md.AppendLine($"## Not run ({summary.NotRun.Count})");
+        if (summary.NotRun.Count > 0)
+        {
+            md.AppendLine();
+            md.AppendLine("Excluded from the pass rates: the provider refused the call (HTTP 429) after every retry.");
+            md.AppendLine();
+            foreach (var result in summary.NotRun)
+                md.AppendLine($"- {summary.RunName(result)}: {result.Transcript.NotRunReason}, {Cell(result.Checks[0].Detail ?? "")}");
+        }
 
         return md.ToString();
     }

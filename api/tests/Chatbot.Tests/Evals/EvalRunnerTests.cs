@@ -41,10 +41,10 @@ public class EvalRunnerTests(PostgresFixture postgres)
         """;
 
     /// <summary>A migrated and seeded database with the harness services on top; <paramref name="model"/> gets its connection string.</summary>
-    private async Task<ServiceProvider> HostAsync(Func<string, IChatClient> model)
+    private async Task<ServiceProvider> HostAsync(Func<string, IChatClient> model, ModelCallPolicy? policy = null)
     {
         var connectionString = await postgres.CreateMigratedDatabaseAsync();
-        var services = EvalHost.Build(EvalConfiguration.Build(connectionString), model(connectionString));
+        var services = EvalHost.Build(EvalConfiguration.Build(connectionString), model(connectionString), policy);
         await EvalHost.PrepareDatabaseAsync(services, CancellationToken.None);
         return services;
     }
@@ -218,5 +218,64 @@ public class EvalRunnerTests(PostgresFixture postgres)
         Assert.Contains("2-room apartment in Palermo", terms);
         Assert.DoesNotContain("Margherita", terms); // another business
         Assert.True(terms.Select(t => t.Length).SequenceEqual(terms.Select(t => t.Length).OrderDescending()));
+    }
+
+    private static readonly ModelCallPolicy NoWaiting = new(TimeSpan.Zero, MaxRetries: 2, Delay: (_, _) => Task.CompletedTask);
+
+    private static HttpRequestException TooManyRequests() => new("quota", null, System.Net.HttpStatusCode.TooManyRequests);
+
+    [Fact]
+    public async Task A_provider_quota_that_persists_after_the_retries_makes_the_case_not_run_instead_of_failed()
+    {
+        var model = new ScriptedChatClient((_, _) => Turn.Fail(TooManyRequests()));
+        await using var services = await HostAsync(_ => model, NoWaiting);
+        var evalCase = CaseLoader.Parse("test.yaml", OrderCase).Single();
+
+        var result = Assert.Single(await EvalRunner.RunAsync(services, [evalCase], 1, null, CancellationToken.None));
+
+        Assert.True(result.NotRun);
+        Assert.False(result.Passed);
+        Assert.False(result.Failed);
+        Assert.Equal(3, model.Calls.Count); // the call and 2 retries, and the second turn is never sent
+        Assert.Equal(ConversationRunner.ProviderQuota, result.Transcript.NotRunReason);
+        var check = Assert.Single(result.Checks);
+        Assert.Equal(ConversationRunner.ProviderQuota, check.Name);
+        Assert.Contains("turn 1:", check.Detail);
+        Assert.Equal("skipped: a previous turn failed", result.Transcript.Turns[1].Error);
+        Assert.Null(result.Transcript.Turns[1].InfrastructureError);
+
+        var summary = EvalSummary.Create([result]);
+        Assert.Equal((0, 0, 1), (summary.Runs, summary.Passed, summary.NotRun.Count));
+    }
+
+    [Fact]
+    public async Task A_429_that_clears_within_the_retries_is_judged_like_any_other_run()
+    {
+        var calls = 0;
+        await using var services = await HostAsync(connection =>
+        {
+            var inner = OrderingModel(connection);
+            // The first model call of the conversation is refused once; everything after that is the normal script.
+            return new ScriptedChatClient((_, messages) => Interlocked.Increment(ref calls) == 1 ? Turn.Fail(TooManyRequests()) : inner.Script(0, messages));
+        }, NoWaiting);
+        var evalCase = CaseLoader.Parse("test.yaml", OrderCase).Single();
+
+        var result = Assert.Single(await EvalRunner.RunAsync(services, [evalCase], 1, null, CancellationToken.None));
+
+        Assert.False(result.NotRun);
+        Assert.True(result.Passed, string.Join("\n", result.Failures));
+    }
+
+    [Fact]
+    public async Task A_provider_error_that_is_not_a_quota_still_fails_the_case()
+    {
+        await using var services = await HostAsync(
+            _ => new ScriptedChatClient((_, _) => Turn.Fail(new HttpRequestException("down", null, System.Net.HttpStatusCode.BadGateway))), NoWaiting);
+        var evalCase = CaseLoader.Parse("test.yaml", OrderCase).Single();
+
+        var result = Assert.Single(await EvalRunner.RunAsync(services, [evalCase], 1, null, CancellationToken.None));
+
+        Assert.False(result.NotRun);
+        Assert.True(result.Failed);
     }
 }

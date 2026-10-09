@@ -8,12 +8,14 @@ namespace Chatbot.Evals;
 
 /// <summary>
 /// Entry point. Exit code 0: the MVP targets were met. 1: they were not. 2: the run could not start (bad arguments,
-/// invalid case files, no model configured, no database).
+/// invalid case files, no model configured, no database). 3: the targets were met by the runs that were judged, but
+/// the provider refused some runs (quota), so the result is incomplete.
 /// </summary>
 internal static class EvalProgram
 {
     private const int TargetsMissed = 1;
     private const int CouldNotRun = 2;
+    private const int Incomplete = 3;
 
     private static async Task<int> Main(string[] args)
     {
@@ -73,13 +75,14 @@ internal static class EvalProgram
 
         await using var database = await EvalDatabase.StartAsync(configuredConnection, ct);
         var configuration = EvalConfiguration.Build(database.ConnectionString, options.Model);
-        await using var services = EvalHost.Build(configuration, options.Fake ? new FakeChatClient() : null);
+        var policy = options.Fake ? null : new ModelCallPolicy(TimeSpan.FromMilliseconds(options.MinIntervalMs), Notice: Console.WriteLine);
+        await using var services = EvalHost.Build(configuration, options.Fake ? new FakeChatClient() : null, policy);
         await EvalHost.PrepareDatabaseAsync(services, ct);
 
         var clock = Stopwatch.StartNew();
         var startedAt = DateTimeOffset.Now;
         var results = await EvalRunner.RunAsync(services, cases, options.Repeat, (result, done, total) =>
-            Console.WriteLine($"[{done}/{total}] {result.Transcript.Case.Id} {(result.Passed ? "PASS" : "FAIL")}"), ct);
+            Console.WriteLine($"[{done}/{total}] {result.Transcript.Case.Id} {(result.NotRun ? "NOT RUN" : result.Passed ? "PASS" : "FAIL")}"), ct);
 
         var summary = EvalSummary.Create(results);
         var info = new RunInfo(
@@ -94,8 +97,14 @@ internal static class EvalProgram
         Console.WriteLine();
         Console.WriteLine($"Report: {report}");
 
-        if (summary.TargetsMet)
+        if (summary.TargetsMet && summary.NotRun.Count == 0)
             return 0;
+
+        if (summary.TargetsMet)
+        {
+            Console.WriteLine($"Incomplete: {summary.NotRun.Count} run(s) were refused by the provider (quota) and not judged. The targets are met by the other {summary.Runs}.");
+            return Incomplete;
+        }
 
         Console.WriteLine($"MVP targets (100% language, 100% forbidden phrases, >= 90% tool use) not met: {string.Join("; ", summary.Targets.Where(t => !t.Met).Select(t => t.Name))}.");
         return TargetsMissed;
