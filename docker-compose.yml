@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatbot}
+      POSTGRES_USER: ${POSTGRES_USER:-chatbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatbot}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatbot} -d ${POSTGRES_DB:-chatbot}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-chatbot};Username=${POSTGRES_USER:-chatbot};Password=${POSTGRES_PASSWORD:-chatbot}
+      Cors__AllowedOrigin: ${CORS_ALLOWED_ORIGIN:-http://localhost:3001}
+      Llm__Primary__BaseUrl: ${LLM_PRIMARY_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
+      Llm__Primary__ApiKey: ${LLM_PRIMARY_API_KEY:-}
+      Llm__Primary__Model: ${LLM_PRIMARY_MODEL:-}
+      Llm__Fallback__BaseUrl: ${LLM_FALLBACK_BASE_URL:-https://api.groq.com/openai/v1}
+      Llm__Fallback__ApiKey: ${LLM_FALLBACK_API_KEY:-}
+      Llm__Fallback__Model: ${LLM_FALLBACK_MODEL:-}
+      Admin__Key: ${ADMIN_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ./web
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-3001}:80"
+
+volumes:
+  pgdata:
