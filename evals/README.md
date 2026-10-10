@@ -46,7 +46,7 @@ dotnet run --project evals/Chatbot.Evals -- --retrieval            # --filter / 
 dotnet run --project evals/Chatbot.Evals -- --retrieval --fake     # offline: deterministic bag-of-words embeddings
 ```
 
-`cases/rag-retrieval.yaml` has 65 answerable questions (Spanish and English, the three businesses) with the slug(s) of the document that holds the answer, and 15 `unanswerable: true` ones. Each question is searched in the knowledge base of its business and the top 4 passages are compared with `expectSources`. Reported overall and by language pair (question language -> document language; `es->en` and `en->es` are the cross-language ones, the documents are in both languages on purpose):
+`cases/rag-retrieval.yaml` has 66 answerable questions (Spanish and English, the three businesses) with the slug(s) of the document that holds the answer, and 14 `unanswerable: true` ones. Each question is searched in the knowledge base of its business and the top 4 passages are compared with `expectSources`. Reported overall and by language pair (question language -> document language; `es->en` and `en->es` are the cross-language ones, the documents are in both languages on purpose):
 
 - **recall@4:** the share of questions whose expected document has a chunk in the top 4.
 - **MRR:** mean of 1 / rank of the expected document among the documents of the top 4 (0 when missing).

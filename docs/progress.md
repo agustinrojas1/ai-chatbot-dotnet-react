@@ -39,8 +39,23 @@
 
 ## M6 — Evals (the limits half is above)
 - Harness `evals/Chatbot.Evals` and 36 cases in 10 categories (language 7, injection 6, search 4, booking 4, availability 3, order 3, not_in_catalog 3, handoff 2, smallTalk 2, gibberish 2). Checks: tool calls and order, bookings and handoffs that really exist in the database, language, forbidden phrases, `mustMention`, order totals. Console table and `evals/results/<date>.md`. The harness itself is tested offline (`api/tests/Chatbot.Tests/Evals`) and `--fake` runs it without a model.
-- Pending: **the evals have never run against a real model**, so there are no results and the MVP targets (100 % language and forbidden phrases, >= 90 % tool use) are unverified. The README has a placeholder table for them.
+- Real-model run 2026-10-09: 34/36 pass, all MVP targets met (language 100 %, forbidden phrases 100 %, tool use 100 %). The later run, after M8, is in the M8 section.
 
 ## M7 — README and ADRs (deploy not done)
-- Done: README in SPEC 14 order, MIT `LICENSE`, ADR-007 to ADR-012 (no RAG, rules in code, SSE over fetch, provider fallback, per-call cost, tracing below function invocation), so `docs/decisions.md` has 12 ADRs.
+- Done: README in SPEC 14 order, MIT `LICENSE`, ADR-007 to ADR-012 (no RAG for the catalog, rules in code, SSE over fetch, provider fallback, per-call cost, tracing below function invocation), so `docs/decisions.md` had 12 ADRs at this point. ADR-007 still holds for the catalog; M8 added RAG for free text (ADR-015).
 - Pending, owner input needed: demo URL and GIF; hosting provider (undecided: SPEC 17 asks the owner); confirmation of the license holder and year (MIT, "Agustín Rojas", 2026, written without confirmation); a live Groq fallback run (only stub-tested); a decision on whether the public `/admin` stays protected; CI green on GitHub (workflow exists, no run observed from here).
+
+## M8 — Knowledge base with RAG (evals run 2026-10-10)
+- Done: 54 invented knowledge documents (18 per business, Spanish and English mixed, one embedded malicious instruction per business); see `docs/seed-notes.md`.
+- Done: `KnowledgeIngestor`: frontmatter parsing with file and line errors; chunking (sections over about 500 estimated tokens cut to about 400, 50-token overlap; tokens estimated as characters / 4); embeddings in batches of 32 with backoff on 429; one transaction per document; idempotent by content hash. Runs at startup in Development (`Knowledge:AutoIngest`) and by hand with `dotnet run --project api/src/Chatbot.Api -- ingest`.
+- Done: pgvector in the same PostgreSQL (`pgvector/pgvector:pg17` in Compose, Testcontainers and the evals database); migration `KnowledgeBase` with `vector(768)` chunk embeddings, an HNSW index, a GIN index on a generated `tsvector`, and `Retrieval` in the `trace_events` type check.
+- Done: `KnowledgeSearch` (20 semantic + 20 lexical candidates, both filtered by `BusinessId`, merged with RRF k = 60, best 4); relevance threshold (`Knowledge:MinSemanticSimilarity` 0.60, `Knowledge:MinLexicalRank` 0.05); tool `search_knowledge_base`; `Retrieval` trace event.
+- Done: ADR-015 (RAG only for free text), ADR-016 (hybrid search with RRF), ADR-017 (pgvector, 768 dimensions, `gemini-embedding-001`). README updated: the "No RAG" decision is replaced, and the evals and configuration rows are added.
+- Done: tests in `api/tests/Chatbot.Tests/Knowledge`: `ChunkerTests`, `KnowledgeDocumentParserTests`, `ReciprocalRankFusionTests`, `LexicalQueryTests`, `KnowledgeIngestorTests`, `KnowledgeSearchTests`, `KnowledgeToolsTests`, `KnowledgeStartupTests`.
+- Evals, 2026-10-10 (`evals/results/2026-10-10-1442-retrieval.md`, `evals/results/2026-10-10-1502.md`): retrieval recall@4 1.000 and MRR 0.985 (targets >= 0.9 and >= 0.75); conversations 59/60 (98.3 %), with 5/5 unanswerable questions not invented and 3/3 injected instructions ignored; tokens 629,489 in / 8,208 out, about $0.21 at paid prices (chat model only).
+- Pending:
+  - One failing case: `rag-mixed-dental-cleaning-insurance-en` (mixed catalog + insurance question). The model called `search_catalog` but not `search_knowledge_base`. Not addressed yet.
+  - `ModelPricing` row for `gemini-embedding-001`: no verified price, so embedding cost shows 0.
+  - Optional LLM faithfulness judge (SPEC 12) not implemented.
+  - `evals/README.md` splits the 80 retrieval questions as 65 answerable + 15 unanswerable; the measured run has 66 + 14 (`evals/cases/rag-retrieval.yaml`). That file needs the correction.
+  - Demo GIF or screenshot with a RAG answer and its passages (SPEC 15, M8), together with the public deploy (M7).
