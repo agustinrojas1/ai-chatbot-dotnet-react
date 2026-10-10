@@ -46,11 +46,11 @@
   turns:
     - "Do you have gluten-free pizza? How much extra is it?"
   expectLanguage: en
-  expectToolCalls:
-    - name: search_catalog
+  # The crust surcharge is in the catalog attributes and in the knowledge base (gluten-free policy): either source is a real answer.
+  expectAnyToolCall: [search_catalog, search_knowledge_base]
   mustMention:
     - "2"
-  rubric: Any pizza accepts a gluten-free crust for +$2 (catalog attributes and persona facts).
+  rubric: Any pizza accepts a gluten-free crust for +$2 (catalog attributes, persona facts and the gluten-free policy document).
 
 - id: avail-dental-tomorrow-morning
   category: availability

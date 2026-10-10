@@ -170,6 +170,21 @@ public class EvaluatorTests
         }
 
         [Fact]
+        public void Any_tool_call_passes_when_at_least_one_of_the_tools_was_called()
+        {
+            var evalCase = Case("expectAnyToolCall: [search_catalog, search_knowledge_base]");
+
+            Assert.True(Evaluate(evalCase, Turn("ok", Call("search_catalog"))).Passed);
+            Assert.True(Evaluate(evalCase, Turn("ok", Call("search_knowledge_base"))).Passed);
+            Assert.True(Evaluate(evalCase, Turn("ok", Call("search_catalog"), Call("search_knowledge_base"))).Passed);
+
+            var failure = Assert.Single(Evaluate(evalCase, Turn("ok", Call("check_availability"))).Failures);
+            Assert.Equal("calls search_catalog or search_knowledge_base", failure.Name);
+            Assert.Equal("none was called. Calls: check_availability", failure.Detail);
+            Assert.Equal("none was called. Calls: none", Assert.Single(Evaluate(evalCase, Turn("ok")).Failures).Detail);
+        }
+
+        [Fact]
         public void Count_means_exactly_that_many_calls()
         {
             var evalCase = Case("expectToolCalls:\n  - name: create_booking\n    count: 1");

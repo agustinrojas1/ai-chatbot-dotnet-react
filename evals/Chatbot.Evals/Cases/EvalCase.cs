@@ -74,6 +74,9 @@ internal sealed record Expectations
 
     public IReadOnlyList<string> ForbidToolCalls { get; init; } = [];
 
+    /// <summary>At least one of these tools must have been called (two sources can legitimately answer the same question). Empty: no check.</summary>
+    public IReadOnlyList<string> AnyToolCall { get; init; } = [];
+
     /// <summary>Language of the assistant replies. At case level it applies to every turn that has no language of its own.</summary>
     public ReplyLanguage? Language { get; init; }
 
@@ -97,7 +100,7 @@ internal sealed record Expectations
     public bool? Handoff { get; init; }
 
     public bool IsEmpty =>
-        ToolCalls.Count == 0 && ForbidToolCalls.Count == 0 && Language is null && ForbidPhrases.Count == 0
+        ToolCalls.Count == 0 && AnyToolCall.Count == 0 && ForbidToolCalls.Count == 0 && Language is null && ForbidPhrases.Count == 0
         && MustMention.Count == 0 && RetrievalSources.Count == 0 && Booking is null && BookingTotal is null && Handoff is null;
 }
 

@@ -185,6 +185,13 @@ internal static class Evaluator
                 passed ? null : $"expected {times}, matched {matching}. Calls: {Describe(calls, expected.Name)}"));
         }
 
+        if (expect.AnyToolCall.Count > 0)
+        {
+            var called = expect.AnyToolCall.Where(name => calls.Any(c => c.Name == name)).ToList();
+            checks.Add(new CheckResult(CheckDimension.ToolUse, $"{prefix}calls {string.Join(" or ", expect.AnyToolCall)}", called.Count > 0,
+                called.Count > 0 ? null : $"none was called. Calls: {(calls.Count == 0 ? "none" : string.Join(", ", calls.Select(c => c.Name)))}"));
+        }
+
         if (expect.ToolsInOrder)
         {
             var position = 0;

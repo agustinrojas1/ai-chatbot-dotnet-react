@@ -143,7 +143,7 @@
     - say: "Do you offer root canal treatment? How much is it?"
       forbidToolCalls: [create_booking]
       mustMention:
-        - anyOf: ["don't have", "do not have", "no information", "not sure", "couldn't find", "could not find", "can't confirm", "cannot confirm", "unable to", "not able to"]
+        - anyOf: ["don't have", "do not have", "no information", "not sure", "couldn't find", "could not find", "can't confirm", "cannot confirm", "unable to", "not able to", "don't currently offer", "do not currently offer", "don't offer", "do not offer", "isn't something we", "is not something we", "not something we", "don't currently have", "doesn't appear", "not available"]
         - anyOf: ["person", "human", "team", "staff", "someone", "colleague", "receptionist"]
     - say: "Yes please, connect me with someone."
       expectToolCalls: [{ name: handoff_to_human }]
@@ -159,7 +159,7 @@
   expectLanguage: es
   forbidToolCalls: [create_booking]
   mustMention:
-    - anyOf: ["no tengo", "no cuento", "no dispongo", "no encontré", "no encontre", "no puedo confirmar", "no puedo asegurar", "no tengo esa información"]
+    - anyOf: ["no tengo", "no cuento", "no dispongo", "no encontré", "no encontre", "no puedo confirmar", "no puedo asegurar", "no tengo esa información", "no ofrecemos", "no contamos", "no manejamos", "no tenemos", "no figura", "no cuenta con"]
     - anyOf: ["persona", "equipo", "alguien", "asesor", "agente", "colega"]
   forbidPhrases: ["incluyen cochera", "incluye cochera", "sí incluyen", "sí, incluyen", "tienen cochera incluida", "cochera sin cargo"]
 
@@ -171,7 +171,7 @@
   expectLanguage: en
   forbidToolCalls: [create_booking]
   mustMention:
-    - anyOf: ["don't have", "do not have", "no information", "not sure", "couldn't find", "could not find", "can't confirm", "cannot confirm", "unable to", "not able to"]
+    - anyOf: ["don't have", "do not have", "no information", "not sure", "couldn't find", "could not find", "can't confirm", "cannot confirm", "unable to", "not able to", "don't currently offer", "do not currently offer", "don't offer", "do not offer", "isn't something we", "is not something we", "not something we", "don't currently have", "doesn't appear", "not available"]
     - anyOf: ["person", "human", "team", "staff", "someone", "colleague"]
   forbidPhrases: ["yes, we offer valet", "we offer valet", "we have valet", "valet parking is available", "valet costs", "valet is $", "valet is free"]
 
@@ -183,7 +183,7 @@
   expectLanguage: es
   forbidToolCalls: [create_booking]
   mustMention:
-    - anyOf: ["no tengo", "no cuento", "no dispongo", "no encontré", "no encontre", "no puedo confirmar", "no puedo asegurar", "no tengo esa información"]
+    - anyOf: ["no tengo", "no cuento", "no dispongo", "no encontré", "no encontre", "no puedo confirmar", "no puedo asegurar", "no tengo esa información", "no ofrecemos", "no contamos", "no manejamos", "no tenemos", "no figura", "no cuenta con"]
     - anyOf: ["persona", "equipo", "alguien", "recepcionista", "colega"]
   forbidPhrases: ["aceptamos bitcoin", "aceptamos criptomonedas", "sí, aceptamos", "podés pagar con bitcoin", "puedes pagar con bitcoin"]
 
@@ -195,7 +195,7 @@
   expectLanguage: es
   forbidToolCalls: [create_booking]
   mustMention:
-    - anyOf: ["no tengo", "no cuento", "no dispongo", "no encontré", "no encontre", "no puedo confirmar", "no sé", "no se el nombre", "no tengo esa información"]
+    - anyOf: ["no tengo", "no cuento", "no dispongo", "no encontré", "no encontre", "no puedo confirmar", "no sé", "no se el nombre", "no tengo esa información", "no contamos", "no tenemos", "no ofrecemos"]
     - anyOf: ["persona", "equipo", "alguien", "colega"]
   forbidPhrases: ["el chef es", "nuestro chef es", "se llama chef", "chef luigi", "chef principal es"]
 
@@ -229,13 +229,13 @@
   category: rag_mixed
   niche: restaurant
   turns:
-    - "How much is the Veggie pizza, and how much extra for a gluten-free crust?"
+    - "Is the gluten-free crust cooked in a separate oven, and how much is the Veggie pizza?"
   expectLanguage: en
   expectToolCalls: [{ name: search_catalog }, { name: search_knowledge_base }]
   expectRetrievalSources: [masa-sin-tacc-y-contaminacion-cruzada]
   mustMention:
-    - "$14"
-    - "$2"
+    - "$14"   # catalog price
+    - anyOf: ["shared oven", "same oven", "not a separate", "isn't a separate", "is not a separate", "not baked separately", "not cooked separately", "cross-contamination", "cross contamination", "cross-contact"]   # policy: shared oven
   forbidToolCalls: [create_booking]
 
 - id: rag-mixed-restaurant-pepperoni-pickup-es

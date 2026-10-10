@@ -22,7 +22,7 @@ public sealed partial class KnowledgeTools(KnowledgeSearch search, ToolContext c
         "and offer to connect them with a person (handoff_to_human once they accept). Do not answer from memory and do not guess.";
 
     public async Task<object> SearchKnowledgeBaseAsync(
-        [Description("The customer's question as one complete, self-contained sentence in the customer's own words, e.g. 'What is the cancellation policy for appointments?'. Max 300 characters.")]
+        [Description("The customer's question as one rich, self-contained sentence that keeps the topic words of their situation, e.g. 'How long does the refund take for a wrong order that was delivered?' (not 'refund' or 'how long'). If the passages do not answer it, call again ONCE with a differently worded query, also in the other language. Max 300 characters.")]
         string? query = null,
         CancellationToken cancellationToken = default)
     {

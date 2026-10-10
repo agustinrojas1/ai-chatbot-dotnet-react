@@ -139,6 +139,8 @@ public class CaseLoaderTests
     [Theory]
     [InlineData("expectToolCalls:\n    - name: search_catlog", "unknown tool 'search_catlog'")]
     [InlineData("forbidToolCalls: [make_coffee]", "unknown tool 'make_coffee'")]
+    [InlineData("expectAnyToolCall: [search_catalog]", "needs at least two tools")]
+    [InlineData("expectAnyToolCall: [search_catalog, make_coffee]", "unknown tool 'make_coffee'")]
     [InlineData("expectLanguage: fr", "expectLanguage 'fr' must be 'en' or 'es'")]
     [InlineData("expectHandoff: maybe", "expectHandoff must be true or false")]
     [InlineData("expectBooking: true\n  forbidBooking: true", "cannot both be true")]
@@ -159,6 +161,21 @@ public class CaseLoaderTests
         var ex = Assert.Throws<CaseFormatException>(() => CaseLoader.Parse("bad.yaml", yaml));
 
         Assert.Contains(ex.Problems, p => p.Contains(expectedMessage));
+    }
+
+    [Fact]
+    public void Reads_expect_any_tool_call()
+    {
+        var evalCase = CaseLoader.Parse("test.yaml", """
+            - id: any-case
+              category: search
+              niche: restaurant
+              turns: ["hi"]
+              expectAnyToolCall: [search_catalog, search_knowledge_base]
+            """).Single();
+
+        Assert.Equal(["search_catalog", "search_knowledge_base"], evalCase.Expect.AnyToolCall);
+        Assert.False(evalCase.Expect.IsEmpty);
     }
 
     [Fact]

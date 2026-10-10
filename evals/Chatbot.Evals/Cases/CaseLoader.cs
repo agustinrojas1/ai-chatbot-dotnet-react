@@ -30,7 +30,7 @@ internal static partial class CaseLoader
 
     private static readonly string[] ExpectationKeys =
     [
-        "expectToolCalls", "expectToolOrder", "forbidToolCalls", "expectLanguage", "forbidPhrases", "mustMention",
+        "expectToolCalls", "expectAnyToolCall", "expectToolOrder", "forbidToolCalls", "expectLanguage", "forbidPhrases", "mustMention",
         "expectBooking", "forbidBooking", "expectBookingTotal", "expectHandoff", "expectRetrievalSources",
     ];
 
@@ -190,6 +190,9 @@ internal static partial class CaseLoader
     private static Expectations ReadExpectations(Dictionary<string, YamlNode> fields, YamlMappingNode owner, Context context)
     {
         var toolCalls = fields.TryGetValue("expectToolCalls", out var callsNode) ? ReadToolCalls(callsNode, context) : [];
+        var anyTool = fields.TryGetValue("expectAnyToolCall", out var anyNode) ? ReadToolNames(anyNode, context, "expectAnyToolCall") : [];
+        if (anyTool.Count == 1)
+            context.Problem(fields["expectAnyToolCall"], "expectAnyToolCall needs at least two tools to choose from (use expectToolCalls for one).");
         var forbidTools = fields.TryGetValue("forbidToolCalls", out var forbidNode) ? ReadToolNames(forbidNode, context, "forbidToolCalls") : [];
         var phrases = fields.TryGetValue("forbidPhrases", out var phrasesNode) ? ReadStrings(phrasesNode, context, "forbidPhrases") : [];
         var mentions = fields.TryGetValue("mustMention", out var mentionNode) ? ReadMentions(mentionNode, context) : [];
@@ -238,6 +241,7 @@ internal static partial class CaseLoader
         {
             ToolCalls = toolCalls,
             ToolsInOrder = inOrder,
+            AnyToolCall = anyTool,
             ForbidToolCalls = forbidTools,
             Language = language,
             ForbidPhrases = phrases,
