@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Chatbot.Core.Agent;
 using Chatbot.Core.Domain;
+using Chatbot.Infrastructure.Knowledge;
 
 namespace Chatbot.Infrastructure.Agent.Tracing;
 
@@ -8,11 +9,16 @@ namespace Chatbot.Infrastructure.Agent.Tracing;
 /// Collects the <see cref="TraceEvent"/>s of one run. It is the only place that allocates <c>Sequence</c> numbers
 /// (0, 1, 2... in the order events complete), sanitizes payloads (<see cref="TracePayload"/>), prices every
 /// <c>LlmCall</c> and keeps the run totals, so the run cost is by construction the sum of its LlmCall costs.
+/// A <c>Retrieval</c> event (<see cref="RecordRetrieval"/>) adds the cost of its query embedding to the run cost, not its tokens
+/// (those are embedding tokens, not model tokens).
 /// Events are kept in memory while the run streams and persisted with the run when it closes.
 /// </summary>
 public sealed class TraceRecorder(Guid runId, IReadOnlyDictionary<string, ModelPricing> pricing, TimeProvider clock)
 {
     public const string UnknownModel = "unknown";
+
+    /// <summary>Name of the <c>Retrieval</c> event: the tool that produced it.</summary>
+    public const string RetrievalName = "search_knowledge_base";
     private const int NameColumnLength = 200; // trace_events.Name
 
     private readonly object _gate = new();
@@ -24,7 +30,7 @@ public sealed class TraceRecorder(Guid runId, IReadOnlyDictionary<string, ModelP
     public long TokensIn { get; private set; }
     public long TokensOut { get; private set; }
 
-    /// <summary>Sum of the cost of every recorded <c>LlmCall</c>.</summary>
+    /// <summary>Sum of the cost of every recorded <c>LlmCall</c> and <c>Retrieval</c>.</summary>
     public decimal CostUsd { get; private set; }
 
     /// <summary>Every event recorded so far, in sequence order.</summary>
@@ -68,6 +74,50 @@ public sealed class TraceRecorder(Guid runId, IReadOnlyDictionary<string, ModelP
 
         return Record(TraceEventType.LlmCall, model, input, output, tokensIn, tokensOut, cost, durationMs);
     }
+
+    /// <summary>Longest passage text kept in a <c>Retrieval</c> event: four passages must fit the 4 KB payload limit (<see cref="TracePayload.MaxChars"/>).</summary>
+    public const int RetrievalTextChars = 350;
+
+    private const int RetrievalLabelChars = 80;
+
+    /// <summary>
+    /// Records one <c>search_knowledge_base</c> call (SPEC 7.6): the query, every candidate passage with its scores and whether it
+    /// passed the threshold, the embedding tokens of the query and their cost (the <see cref="ModelPricing"/> row of the embedding
+    /// model; 0 when there is none). The passage text is clipped; the full text is in the database and in the tool result.
+    /// </summary>
+    public TraceEvent RecordRetrieval(KnowledgeSearchResult result, int durationMs)
+    {
+        var cost = Math.Round(
+            CostCalculator.Compute(pricing.GetValueOrDefault(result.EmbeddingModel), result.EmbeddingTokens, 0), 8, MidpointRounding.AwayFromZero);
+
+        lock (_gate)
+            CostUsd += cost;
+
+        return Record(
+            TraceEventType.Retrieval, RetrievalName,
+            new { query = result.Query },
+            new
+            {
+                thresholdPassed = result.ThresholdPassed,
+                threshold = result.SemanticThreshold,
+                lexicalThreshold = result.LexicalThreshold,
+                embeddingModel = result.EmbeddingModel,
+                passages = result.Passages.Select(p => new
+                {
+                    sourceId = p.SourceId,
+                    title = TracePayload.Clip(p.Title, RetrievalLabelChars),
+                    heading = TracePayload.Clip(p.Heading, RetrievalLabelChars),
+                    text = TracePayload.Clip(p.Text, RetrievalTextChars),
+                    semanticScore = Round(p.SemanticScore),
+                    lexicalScore = Round(p.LexicalScore),
+                    finalScore = Math.Round(p.FinalScore, 4),
+                    aboveThreshold = p.AboveThreshold,
+                }),
+            },
+            tokensIn: result.EmbeddingTokens, tokensOut: null, costUsd: cost, durationMs: durationMs);
+    }
+
+    private static double? Round(double? value) => value is { } v ? Math.Round(v, 4) : null;
 
     public TraceEvent Record(
         TraceEventType type, string name, object? input, object? output,

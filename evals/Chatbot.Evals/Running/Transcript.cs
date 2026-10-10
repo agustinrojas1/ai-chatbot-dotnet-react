@@ -4,6 +4,16 @@ using Chatbot.Evals.Cases;
 
 namespace Chatbot.Evals.Running;
 
+/// <summary>A passage a <c>Retrieval</c> event returned. <paramref name="Relevant"/>: it passed the threshold, so the model was given it.</summary>
+internal sealed record RetrievedPassage(string SourceId, bool Relevant)
+{
+    /// <summary>The document: <c>cancelacion-y-no-show#1</c> is in <c>cancelacion-y-no-show</c>.</summary>
+    public string Slug => SourceId.Contains('#') ? SourceId[..SourceId.LastIndexOf('#')] : SourceId;
+}
+
+/// <summary>A <c>search_knowledge_base</c> call as the trace stores it (a <c>Retrieval</c> event).</summary>
+internal sealed record RetrievalRecord(string Query, bool ThresholdPassed, IReadOnlyList<RetrievedPassage> Passages);
+
 /// <summary>One tool call of the agent: what the model sent and what the tool answered (both as the trace stores them).</summary>
 internal sealed record ToolCallRecord(string Name, JsonElement? Arguments, JsonElement? Result);
 
@@ -19,6 +29,9 @@ internal sealed record TurnResult
     public required string User { get; init; }
     public string Reply { get; init; } = "";
     public IReadOnlyList<ToolCallRecord> ToolCalls { get; init; } = [];
+
+    /// <summary>The knowledge base searches of the turn. Each one is also in <see cref="ToolCalls"/> (as <c>search_knowledge_base</c>).</summary>
+    public IReadOnlyList<RetrievalRecord> Retrievals { get; init; } = [];
 
     /// <summary>Why the turn produced no answer (provider error, rejected message, skipped); null when the run completed.</summary>
     public string? Error { get; init; }

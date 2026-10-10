@@ -10,7 +10,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<C
     {
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Postgres")
             ?? "Host=localhost;Port=5432;Database=chatbot;Username=chatbot;Password=chatbot";
-        var options = new DbContextOptionsBuilder<ChatbotDbContext>().UseNpgsql(connectionString).Options;
+        var options = new DbContextOptionsBuilder<ChatbotDbContext>().UseChatbotNpgsql(connectionString).Options;
         return new ChatbotDbContext(options);
     }
 }

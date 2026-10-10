@@ -21,7 +21,11 @@ internal static class ApiHost
             builder.UseSetting("ConnectionStrings:Postgres", world.ConnectionString);
             foreach (var (key, value) in settings ?? new Dictionary<string, string>())
                 builder.UseSetting(key, value);
-            builder.ConfigureServices(services => services.AddKeyedSingleton<IChatClient>("llm", llm));
+            builder.ConfigureServices(services =>
+            {
+                services.AddKeyedSingleton<IChatClient>("llm", llm);
+                services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>>("embeddings", world.Embeddings);
+            });
         });
         return (factory, world);
     }

@@ -17,6 +17,13 @@ public class TextMatchTests
     [InlineData("Total: 27.5", "27.50", true)]
     [InlineData("Total: 27,5", "27.5", true)]
     [InlineData("Pay in 2 installments", "2", true)]
+    [InlineData("The fee is 45 dollars", "$45", true)] // the symbol is not compared, the number is
+    [InlineData("El cargo es de $45,00.", "$45", true)]
+    [InlineData("It is $145", "$45", false)]
+    [InlineData("Up to 80 % less radiation", "80%", true)]
+    [InlineData("Delivery is $4.75", "$4.75", true)]
+    [InlineData("Delivery is $4", "$4.75", false)]
+    [InlineData("Hipotecas Norte cobra 0.5% del préstamo", "0,5", true)]
     public void Numbers_are_compared_by_value(string reply, string wanted, bool expected) =>
         Assert.Equal(expected, TextMatch.Mentions(reply, wanted));
 

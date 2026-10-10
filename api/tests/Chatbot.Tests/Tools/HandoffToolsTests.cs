@@ -73,7 +73,7 @@ public class HandoffToolsTests(PostgresFixture postgres)
         // Tools of business A pointing at a session that belongs to business B.
         await using var db = world.NewDb();
         var context = new ToolContext(world.A.Id, real.Context.SessionId, world.A.Timezone);
-        var tools = new Session(db, context, AgentToolFactory.Create(db, context, ToolWorld.Clock));
+        var tools = new Session(db, context, AgentToolFactory.Create(db, context, ToolWorld.Clock, world.NewKnowledge(db)));
 
         var result = await tools.CallAsync(AgentToolFactory.HandoffToHuman, Args);
 

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Chatbot.Core.Domain;
 using Chatbot.Infrastructure.Agent.Tools;
+using Chatbot.Infrastructure.Knowledge;
+using Chatbot.Tests.Knowledge;
 using Chatbot.Infrastructure.Persistence;
 using Chatbot.Tests.Data;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +30,16 @@ internal sealed class ToolWorld
     private ToolWorld(string connectionString) => ConnectionString = connectionString;
 
     public string ConnectionString { get; }
+
+    /// <summary>The deterministic embeddings every knowledge search of this world uses.</summary>
+    public FakeEmbeddingGenerator Embeddings { get; } = new();
+
+    public Embedder Embedder => field ??= TestKnowledge.NewEmbedder(Embeddings);
+
+    public KnowledgeOptions KnowledgeSettings { get; set; } = TestKnowledge.SearchSettings();
+
+    public KnowledgeSearch NewKnowledge(ChatbotDbContext db) => TestKnowledge.NewSearch(db, Embedder, KnowledgeSettings);
+
     public Business A { get; private set; } = null!;
     public Business B { get; private set; } = null!;
 
@@ -114,7 +126,7 @@ internal sealed class ToolWorld
         db.ChatSessions.Add(chat);
         await db.SaveChangesAsync();
         var context = new ToolContext(business.Id, chat.Id, business.Timezone);
-        var session = new Session(db, context, AgentToolFactory.Create(db, context, Clock));
+        var session = new Session(db, context, AgentToolFactory.Create(db, context, Clock, NewKnowledge(db)));
         foreach (var text in userMessages.Length == 0 ? [DefaultCustomerMessage] : userMessages)
             await session.SayAsync(text);
         return session;

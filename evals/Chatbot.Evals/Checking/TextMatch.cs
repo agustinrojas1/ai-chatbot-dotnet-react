@@ -41,7 +41,8 @@ internal static partial class TextMatch
     [GeneratedRegex(@"\d+(?:[.,]\d+)*")]
     private static partial Regex NumberToken();
 
-    [GeneratedRegex(@"^\d+(?:[.,]\d+)*$")]
+    /// <summary>"80", "$45", "€ 3,50", "80%": an amount or a percentage. The symbol is not compared, only the number.</summary>
+    [GeneratedRegex(@"^[$€£]?\s?(\d+(?:[.,]\d+)*)\s?%?$")]
     private static partial Regex NumberOnly();
 
     /// <summary>Lowercase, without accents (ñ becomes n), straight apostrophes, single spaces.</summary>
@@ -64,12 +65,12 @@ internal static partial class TextMatch
 
     /// <summary>
     /// True when <paramref name="reply"/> mentions <paramref name="text"/>. A text made only of digits ("80") is
-    /// compared as a number, so it does not match inside "180", and "$80.00" or "80,00" do match it.
+    /// compared as a number (a leading currency symbol or a trailing % is ignored), so it does not match inside "180", and "$80.00" or "80,00" do match it.
     /// </summary>
     public static bool Mentions(string reply, string text)
     {
         text = text.Trim();
-        if (NumberOnly().IsMatch(text) && ParseNumber(text) is { } number)
+        if (NumberOnly().Match(text) is { Success: true } amount && ParseNumber(amount.Groups[1].Value) is { } number)
             return MentionsNumber(reply, number);
 
         return Normalize(reply).Contains(Normalize(text), StringComparison.Ordinal);

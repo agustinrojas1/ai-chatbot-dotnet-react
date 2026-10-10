@@ -34,7 +34,31 @@ export interface MessagesResponse {
   language: Language | null
 }
 
-export type TraceEventType = 'LlmCall' | 'ToolCall' | 'Guardrail' | 'Handoff' | 'Error'
+export type TraceEventType = 'LlmCall' | 'ToolCall' | 'Retrieval' | 'Guardrail' | 'Handoff' | 'Error'
+
+/** One passage of a `Retrieval` event's output. Scores are null when that ranker did not return the passage. */
+export interface RetrievalPassage {
+  sourceId: string
+  title: string
+  heading: string
+  text: string
+  semanticScore: number | null
+  lexicalScore: number | null
+  finalScore: number
+  aboveThreshold: boolean
+}
+
+/** `input` of a `Retrieval` event (`name` is `search_knowledge_base`). */
+export interface RetrievalInput {
+  query: string
+}
+
+/** `output` of a `Retrieval` event; `tokensIn` of the event are the query embedding tokens. */
+export interface RetrievalOutput {
+  thresholdPassed: boolean
+  threshold: number
+  passages: RetrievalPassage[]
+}
 
 /** One step of an agent run. Same shape in the SSE `trace` event and in `/trace`. */
 export interface TraceEvent {

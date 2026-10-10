@@ -5,10 +5,10 @@ using Testcontainers.PostgreSql;
 
 namespace Chatbot.Tests.Data;
 
-/// <summary>One PostgreSQL 17 container shared by every database test; each test gets its own database.</summary>
+/// <summary>One PostgreSQL 17 + pgvector container shared by every database test; each test gets its own database.</summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17").Build();
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("pgvector/pgvector:pg17").Build();
 
     public Task InitializeAsync() => _container.StartAsync();
 
@@ -42,7 +42,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     public static ChatbotDbContext CreateContext(string connectionString) =>
-        new(new DbContextOptionsBuilder<ChatbotDbContext>().UseNpgsql(connectionString).Options);
+        new(new DbContextOptionsBuilder<ChatbotDbContext>().UseChatbotNpgsql(connectionString).Options);
 }
 
 [CollectionDefinition(Name)]

@@ -189,3 +189,63 @@ describe('sessionTotals', () => {
     expect(sessionTotals([])).toEqual({ runs: 0, tokensIn: 0, tokensOut: 0, costUsd: 0 })
   })
 })
+
+describe('Retrieval steps', () => {
+  const passage = (n: number, extra: Record<string, unknown> = {}) => ({
+    sourceId: `doc#${n}`,
+    title: 'Pet policy',
+    heading: 'Dogs',
+    text: `Text ${n}`,
+    semanticScore: 0.8,
+    lexicalScore: 0.2,
+    finalScore: 0.03,
+    aboveThreshold: true,
+    ...extra,
+  })
+  const retrieval = (output: unknown, extra: Partial<TraceEvent> = {}) =>
+    event(2, { type: 'Retrieval', name: 'search_knowledge_base', input: { query: 'pets?' }, output, tokensIn: 7, costUsd: 0.0000012, durationMs: 120, ...extra })
+
+  it('describes the search, its tokens and cost', () => {
+    const step = describeStep(retrieval({ thresholdPassed: true, threshold: 0.6, passages: [passage(1), passage(2, { aboveThreshold: false })] }), 2)
+    expect(step.label).toBe('Knowledge search')
+    expect(step.tone).toBe('retrieval')
+    expect(step.summary).toContain('hybrid semantic + keyword')
+    expect(step.chips).toEqual(['120 ms', '7 embedding tokens', '$0.0000'])
+    expect(step.failed).toBe(false)
+    expect(step.retrieval?.query).toBe('pets?')
+    expect(step.retrieval?.result).toBe('2 passages, 1 above threshold')
+    expect(step.retrieval?.passages[0].semanticBar).toBe(0.8)
+  })
+
+  it('says nothing relevant was found when the threshold is not passed', () => {
+    const view = describeStep(retrieval({ thresholdPassed: false, threshold: 0.6, passages: [passage(1, { aboveThreshold: false })] }), 1).retrieval
+    expect(view?.thresholdPassed).toBe(false)
+    expect(view?.result).toBe('No relevant information found (below threshold)')
+  })
+
+  it('keeps null scores as null and scales bars relative to the best passage', () => {
+    const view = describeStep(
+      retrieval({
+        thresholdPassed: true,
+        threshold: 0.6,
+        passages: [passage(1, { semanticScore: null, lexicalScore: 0.4, finalScore: 0.02 }), passage(2, { lexicalScore: null, finalScore: 0.01 })],
+      }),
+      1,
+    ).retrieval
+    expect(view?.passages[0].semanticScore).toBeNull()
+    expect(view?.passages[0].semanticBar).toBeNull()
+    expect(view?.passages[0].lexicalBar).toBe(1)
+    expect(view?.passages[1].lexicalScore).toBeNull()
+    expect(view?.passages[1].finalBar).toBeCloseTo(0.5)
+  })
+
+  it('survives missing or malformed fields', () => {
+    const view = describeStep(retrieval({ passages: [null, 'x', { text: 5 }], extra: true }, { input: null, tokensIn: null, costUsd: null }), 1)
+    expect(view.chips).toEqual(['120 ms'])
+    expect(view.retrieval?.query).toBeNull()
+    expect(view.retrieval?.passages).toHaveLength(1)
+    expect(view.retrieval?.passages[0]).toMatchObject({ title: 'passage#3', text: '', finalScore: null, aboveThreshold: false })
+    expect(view.retrieval?.thresholdPassed).toBe(false)
+    expect(describeStep(retrieval(null), 1).retrieval?.passages).toEqual([])
+  })
+})

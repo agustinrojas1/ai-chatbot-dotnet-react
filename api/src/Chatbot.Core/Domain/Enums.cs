@@ -57,6 +57,9 @@ public enum TraceEventType
 {
     LlmCall,
     ToolCall,
+
+    /// <summary>One <c>search_knowledge_base</c> call (M8): the query, the passages with their scores and the embedding cost. Not also a <c>ToolCall</c>.</summary>
+    Retrieval,
     Guardrail,
     Handoff,
     Error,

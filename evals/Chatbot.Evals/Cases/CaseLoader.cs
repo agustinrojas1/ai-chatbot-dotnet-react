@@ -25,21 +25,26 @@ internal static partial class CaseLoader
     private static readonly string[] ToolNames =
     [
         AgentToolFactory.SearchCatalog, AgentToolFactory.GetOfferingDetails, AgentToolFactory.CheckAvailability,
-        AgentToolFactory.CreateBooking, AgentToolFactory.HandoffToHuman,
+        AgentToolFactory.CreateBooking, AgentToolFactory.HandoffToHuman, AgentToolFactory.SearchKnowledgeBase,
     ];
 
     private static readonly string[] ExpectationKeys =
     [
         "expectToolCalls", "expectToolOrder", "forbidToolCalls", "expectLanguage", "forbidPhrases", "mustMention",
-        "expectBooking", "forbidBooking", "expectBookingTotal", "expectHandoff",
+        "expectBooking", "forbidBooking", "expectBookingTotal", "expectHandoff", "expectRetrievalSources",
     ];
+
+    /// <summary>The retrieval questions live in the cases folder but have their own format (see <see cref="Retrieval.RetrievalCaseLoader"/>).</summary>
+    public const string RetrievalFileName = "rag-retrieval.yaml";
 
     public static IReadOnlyList<EvalCase> LoadDirectory(string directory)
     {
         if (!Directory.Exists(directory))
             throw new CaseFormatException([$"{directory}: cases directory not found."]);
 
-        var files = Directory.GetFiles(directory, "*.yaml").Order(StringComparer.Ordinal).ToList();
+        var files = Directory.GetFiles(directory, "*.yaml")
+            .Where(f => !Path.GetFileName(f).Equals(RetrievalFileName, StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal).ToList();
         if (files.Count == 0)
             throw new CaseFormatException([$"{directory}: no *.yaml files."]);
 
@@ -188,6 +193,7 @@ internal static partial class CaseLoader
         var forbidTools = fields.TryGetValue("forbidToolCalls", out var forbidNode) ? ReadToolNames(forbidNode, context, "forbidToolCalls") : [];
         var phrases = fields.TryGetValue("forbidPhrases", out var phrasesNode) ? ReadStrings(phrasesNode, context, "forbidPhrases") : [];
         var mentions = fields.TryGetValue("mustMention", out var mentionNode) ? ReadMentions(mentionNode, context) : [];
+        var sources = fields.TryGetValue("expectRetrievalSources", out var sourcesNode) ? ReadStrings(sourcesNode, context, "expectRetrievalSources") : [];
 
         ReplyLanguage? language = null;
         if (fields.TryGetValue("expectLanguage", out var languageNode))
@@ -236,6 +242,7 @@ internal static partial class CaseLoader
             Language = language,
             ForbidPhrases = phrases,
             MustMention = mentions,
+            RetrievalSources = sources,
             Booking = booking,
             BookingTotal = total,
             Handoff = handoff,
@@ -501,6 +508,10 @@ internal static partial class CaseLoader
         "smalltalk" => EvalCategory.SmallTalk,
         "injection" => EvalCategory.Injection,
         "gibberish" => EvalCategory.Gibberish,
+        "raganswer" => EvalCategory.RagAnswer,
+        "ragunanswerable" => EvalCategory.RagUnanswerable,
+        "ragmixed" => EvalCategory.RagMixed,
+        "raginjection" => EvalCategory.RagInjection,
         _ => null,
     };
 
@@ -522,6 +533,10 @@ internal static partial class CaseLoader
     {
         EvalCategory.NotInCatalog => "not_in_catalog",
         EvalCategory.SmallTalk => "smallTalk",
+        EvalCategory.RagAnswer => "rag_answer",
+        EvalCategory.RagUnanswerable => "rag_unanswerable",
+        EvalCategory.RagMixed => "rag_mixed",
+        EvalCategory.RagInjection => "rag_injection",
         _ => category.ToString().ToLowerInvariant(),
     };
 

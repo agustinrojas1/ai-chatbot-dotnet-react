@@ -14,13 +14,16 @@ internal sealed record EvalOptions
 
           --filter <text>     only cases whose id contains the text
           --category <name>   only one category (language, search, availability, booking, order,
-                              not_in_catalog, handoff, smallTalk, injection, gibberish)
+                              not_in_catalog, handoff, smallTalk, injection, gibberish,
+                              rag_answer, rag_unanswerable, rag_mixed, rag_injection)
           --niche <name>      only one business (realestate, dental, restaurant)
           --model <name>      model of the primary provider (overrides Llm__Primary__Model)
           --repeat <k>        run every case k times (models are not deterministic)
           --min-interval-ms <n>  minimum time between two model calls (default 2000), to stay under
                               the provider's rate limit. A 429 is waited out (Retry-After, else 15 s,
                               30 s, 60 s...) and retried up to 5 times. Not used with --fake.
+          --retrieval         no model, only the embeddings: recall@4 and MRR of the knowledge base search over
+                              evals/cases/rag-retrieval.yaml (needs the embeddings key, or --fake)
           --fake              use a scripted fake model instead of a real one: proves the harness
                               runs offline, most cases fail on purpose
           --cases <dir>       directory with the *.yaml cases (default: evals/cases)
@@ -28,6 +31,7 @@ internal sealed record EvalOptions
 
         Database: ConnectionStrings__Postgres if set, otherwise a throwaway PostgreSQL container (needs Docker).
         Model: Llm__Primary__ApiKey, Llm__Primary__BaseUrl and Llm__Primary__Model (or LLM_PRIMARY_*).
+        Embeddings (RAG cases and --retrieval): Embeddings__ApiKey, Embeddings__BaseUrl, Embeddings__Model (or EMBEDDINGS_*); they default to Llm__Primary.
         """;
 
     public string? Filter { get; init; }
@@ -37,6 +41,7 @@ internal sealed record EvalOptions
     public int Repeat { get; init; } = 1;
     public int MinIntervalMs { get; init; } = ModelCallPolicy.DefaultMinIntervalMs;
     public bool Fake { get; init; }
+    public bool Retrieval { get; init; }
     public string? CasesDirectory { get; init; }
     public string? ResultsDirectory { get; init; }
     public bool Help { get; init; }
@@ -60,6 +65,7 @@ internal sealed record EvalOptions
                 "--cases" => options with { CasesDirectory = Value() },
                 "--results" => options with { ResultsDirectory = Value() },
                 "--fake" => options with { Fake = true },
+                "--retrieval" => options with { Retrieval = true },
                 "--help" or "-h" => options with { Help = true },
                 _ => throw new UsageException($"Unknown option '{name}'."),
             };

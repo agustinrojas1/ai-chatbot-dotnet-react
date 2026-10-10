@@ -3,7 +3,7 @@ import { runTotals, type RunState } from '../state/chatReducer'
 
 /** What the trace panel shows, derived from the raw events so the component stays presentational. */
 
-export type StepTone = 'model' | 'tool' | 'guardrail' | 'handoff' | 'error'
+export type StepTone = 'model' | 'tool' | 'retrieval' | 'guardrail' | 'handoff' | 'error'
 
 export interface TraceStep {
   /** Stable React key: events of a run have unique sequences. */
@@ -24,6 +24,37 @@ export interface TraceStep {
   failed: boolean
   /** Raw payloads for the collapsible JSON viewers; null/undefined payloads are left out. */
   sections: { label: string; value: unknown }[]
+  /** Parsed knowledge-base search, only for `Retrieval` steps. */
+  retrieval: RetrievalView | null
+}
+
+export interface RetrievalPassageView {
+  key: string
+  sourceId: string
+  title: string
+  heading: string | null
+  text: string
+  /** Cosine similarity; null when the passage only came from the keyword search. */
+  semanticScore: number | null
+  /** Keyword (full-text) rank; null when the passage only came from the semantic search. */
+  lexicalScore: number | null
+  /** Reciprocal Rank Fusion score of the two rankings. */
+  finalScore: number | null
+  aboveThreshold: boolean
+  /** 0..1 widths for the score bars (semantic is absolute, the others are relative to the best passage). */
+  semanticBar: number | null
+  lexicalBar: number | null
+  finalBar: number | null
+}
+
+export interface RetrievalView {
+  query: string | null
+  thresholdPassed: boolean
+  threshold: number | null
+  passages: RetrievalPassageView[]
+  aboveCount: number
+  /** "3 passages, 2 above threshold" or the below-threshold message. */
+  result: string
 }
 
 export type RunStatusLabel = 'Running' | 'Completed' | 'Failed'
@@ -147,13 +178,91 @@ function clip(text: string, max: number): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
 }
 
+function num(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/** Scores are small decimals (cosine, RRF): 3 decimals, or a dash when a ranker did not return the passage. */
+export function formatScore(score: number | null): string {
+  return score === null ? '–' : score.toFixed(3)
+}
+
+function bar(score: number | null, max: number): number | null {
+  if (score === null) return null
+  if (max <= 0) return 0
+  return Math.min(1, Math.max(0, score / max))
+}
+
+/** Reads the output of a `Retrieval` event tolerantly: missing or extra fields never break the card. */
+export function parseRetrieval(input: unknown, output: unknown): RetrievalView {
+  const out = asRecord(output)
+  const rawPassages = Array.isArray(out?.passages) ? out.passages : []
+  const base = rawPassages.flatMap((raw, index) => {
+    const p = asRecord(raw)
+    if (!p) return []
+    const sourceId = str(p.sourceId) ?? `passage#${index + 1}`
+    return [
+      {
+        key: `${sourceId}-${index}`,
+        sourceId,
+        title: str(p.title) ?? sourceId,
+        heading: str(p.heading),
+        text: typeof p.text === 'string' ? p.text : '',
+        semanticScore: num(p.semanticScore),
+        lexicalScore: num(p.lexicalScore),
+        finalScore: num(p.finalScore),
+        aboveThreshold: p.aboveThreshold === true,
+      },
+    ]
+  })
+  const maxLexical = Math.max(0, ...base.map((p) => p.lexicalScore ?? 0))
+  const maxFinal = Math.max(0, ...base.map((p) => p.finalScore ?? 0))
+  const passages: RetrievalPassageView[] = base.map((p) => ({
+    ...p,
+    semanticBar: bar(p.semanticScore, 1),
+    lexicalBar: bar(p.lexicalScore, maxLexical),
+    finalBar: bar(p.finalScore, maxFinal),
+  }))
+  const aboveCount = passages.filter((p) => p.aboveThreshold).length
+  const thresholdPassed = typeof out?.thresholdPassed === 'boolean' ? out.thresholdPassed : aboveCount > 0
+  const noun = (n: number) => `${n} passage${n === 1 ? '' : 's'}`
+  let result: string
+  if (!thresholdPassed) result = 'No relevant information found (below threshold)'
+  else if (passages.length === 0) result = 'No passages returned'
+  else result = `${noun(passages.length)}, ${aboveCount} above threshold`
+  return {
+    query: str(asRecord(input)?.query),
+    thresholdPassed,
+    threshold: num(out?.threshold),
+    passages,
+    aboveCount,
+    result,
+  }
+}
+
+function retrievalStep(event: TraceEvent, base: Pick<TraceStep, 'key' | 'number' | 'kind' | 'sections'>): TraceStep {
+  const chips = [formatDuration(event.durationMs)]
+  if (event.tokensIn !== null) chips.push(`${formatTokens(event.tokensIn)} embedding tokens`)
+  if (event.costUsd !== null) chips.push(formatCost(event.costUsd))
+  return {
+    ...base,
+    tone: 'retrieval',
+    label: 'Knowledge search',
+    summary: 'Searched the business knowledge base: hybrid semantic + keyword search.',
+    excerpt: null,
+    chips,
+    failed: false,
+    retrieval: parseRetrieval(event.input, event.output),
+  }
+}
+
 function stepSections(event: TraceEvent): TraceStep['sections'] {
   const pick = (label: string, value: unknown) => (value === null || value === undefined ? [] : [{ label, value }])
   if (event.type === 'ToolCall') return [...pick('Arguments', event.input), ...pick('Result', event.output)]
   return [...pick('Input', event.input), ...pick('Output', event.output)]
 }
 
-function llmStep(event: TraceEvent, base: Pick<TraceStep, 'key' | 'number' | 'kind' | 'sections'>): TraceStep {
+function llmStep(event: TraceEvent, base: Pick<TraceStep, 'key' | 'number' | 'kind' | 'sections' | 'retrieval'>): TraceStep {
   const output = asRecord(event.output)
   // The server writes `unknown` when a call failed before any update told it the model.
   const model = [str(output?.model), event.name].find((name) => name !== null && name !== 'unknown') ?? null
@@ -193,12 +302,15 @@ export function describeStep(event: TraceEvent, number: number): TraceStep {
     number,
     kind: event.type,
     sections: stepSections(event),
+    retrieval: null,
   }
   const duration = formatDuration(event.durationMs)
 
   switch (event.type) {
     case 'LlmCall':
       return llmStep(event, base)
+    case 'Retrieval':
+      return retrievalStep(event, base)
     case 'ToolCall': {
       const { text, failed } = toolSummary(event.name, event.output)
       return { ...base, tone: 'tool', label: `Tool: ${event.name}`, summary: text, excerpt: null, chips: [duration], failed }

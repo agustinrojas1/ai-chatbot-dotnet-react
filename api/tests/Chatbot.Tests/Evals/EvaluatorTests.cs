@@ -289,6 +289,57 @@ public class EvaluatorTests
         }
     }
 
+    public class RetrievalSources
+    {
+        private static TurnResult Searched(params (string SourceId, bool Relevant)[] passages) =>
+            Turn("ok", Call("search_knowledge_base")) with
+            {
+                Retrievals = [new RetrievalRecord("q", passages.Any(p => p.Relevant), [.. passages.Select(p => new RetrievedPassage(p.SourceId, p.Relevant))])],
+            };
+
+        [Fact]
+        public void The_expected_document_must_be_among_the_relevant_passages_of_a_search()
+        {
+            var evalCase = Case("expectRetrievalSources: [cancelacion-y-no-show]");
+
+            Assert.True(Evaluate(evalCase, Searched(("pickup-policy#0", true), ("cancelacion-y-no-show#1", true))).Passed);
+
+            var below = Assert.Single(Evaluate(evalCase, Searched(("cancelacion-y-no-show#1", false), ("pickup-policy#0", true))).Failures);
+            Assert.Equal("retrieval returned cancelacion-y-no-show", below.Name); // returned, but under the threshold: the model never saw it
+            Assert.Equal("relevant passages returned: pickup-policy#0", below.Detail);
+
+            var other = Assert.Single(Evaluate(evalCase, Searched(("pickup-policy#0", true))).Failures);
+            Assert.Contains("pickup-policy#0", other.Detail);
+
+            var never = Assert.Single(Evaluate(evalCase, Turn("From memory.")).Failures);
+            Assert.Equal("search_knowledge_base was not called", never.Detail);
+        }
+
+        [Fact]
+        public void A_document_slug_is_the_source_id_without_the_ordinal()
+        {
+            Assert.Equal("a-b", new RetrievedPassage("a-b#12", true).Slug);
+            Assert.Equal("a-b", new RetrievedPassage("a-b", true).Slug);
+        }
+
+        [Fact]
+        public void A_turn_checks_only_its_own_searches()
+        {
+            var evalCase = Case("", "{ say: \"a\", expectRetrievalSources: [doc-a] }", "\"b\"");
+
+            Assert.True(Evaluate(evalCase, Searched(("doc-a#0", true)), Turn("ok")).Passed);
+            Assert.False(Evaluate(evalCase, Turn("ok"), Searched(("doc-a#0", true))).Passed);
+        }
+
+        [Fact]
+        public void The_knowledge_tool_name_and_the_passage_tag_are_forbidden_in_a_reply()
+        {
+            var result = Evaluate(Case("forbidBooking: true"), Turn("I used search_knowledge_base and got <passage sourceId=x>"));
+
+            Assert.False(Single(result, CheckDimension.ForbiddenPhrases).Passed);
+        }
+    }
+
     public class BookingAndHandoff
     {
         private static BookingSnapshot Booking(decimal? total = null, decimal? serverTotal = null, BookingStatus status = BookingStatus.PendingConfirmation) =>

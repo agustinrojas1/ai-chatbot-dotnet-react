@@ -10,9 +10,12 @@ namespace Chatbot.Infrastructure.Agent.Tracing;
 /// <c>FunctionInvokingChatClient.FunctionInvoker</c> hook of Microsoft.Extensions.AI 10.10, which replaces the default
 /// <c>function.InvokeAsync(arguments)</c> and therefore sees exactly the calls that run. A tool that answers with an
 /// error whose <c>code</c> is a rejected rule adds a <c>Guardrail</c> event right after, and a successful
-/// <c>handoff_to_human</c> adds a <c>Handoff</c> event.
+/// <c>handoff_to_human</c> adds a <c>Handoff</c> event. A <c>search_knowledge_base</c> call that searched is recorded as ONE
+/// <c>Retrieval</c> event instead of a <c>ToolCall</c> (its input, passages with scores, embedding cost): the tool leaves the full
+/// search outcome in <see cref="ToolContext.PendingRetrieval"/>. A call rejected before searching (empty query, knowledge base
+/// unavailable) is an ordinary <c>ToolCall</c>.
 /// </summary>
-public sealed class ToolCallTracer(TraceRecorder recorder)
+public sealed class ToolCallTracer(TraceRecorder recorder, ToolContext toolContext)
 {
     /// <summary>Tool error codes that mean "a rule held the line", besides every <c>invalid_*</c> (bad arguments).</summary>
     private static readonly HashSet<string> GuardrailCodes =
@@ -49,7 +52,10 @@ public sealed class ToolCallTracer(TraceRecorder recorder)
             JsonElement element => element,
             _ => JsonSerializer.SerializeToElement(result),
         };
-        recorder.Record(TraceEventType.ToolCall, name, arguments, view, durationMs: duration);
+        if (name == AgentToolFactory.SearchKnowledgeBase && toolContext.TakeRetrieval() is { } retrieval)
+            recorder.RecordRetrieval(retrieval, duration);
+        else
+            recorder.Record(TraceEventType.ToolCall, name, arguments, view, durationMs: duration);
 
         var code = ErrorCode(view);
         if (code is not null && IsGuardrail(code))

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Chatbot.Evals.Cases;
 using Chatbot.Evals.Checking;
+using Chatbot.Evals.Retrieval;
 using Chatbot.Evals.Running;
 
 namespace Chatbot.Evals.Reporting;
@@ -86,6 +87,77 @@ internal static class MarkdownReport
             md.AppendLine();
             foreach (var result in summary.NotRun)
                 md.AppendLine($"- {summary.RunName(result)}: {result.Transcript.NotRunReason}, {Cell(result.Checks[0].Detail ?? "")}");
+        }
+
+        return md.ToString();
+    }
+
+    /// <summary>The report of a retrieval run (<c>--retrieval</c>): same header as the others, then the retrieval section.</summary>
+    public static string RenderRetrieval(RetrievalSummary summary, RunInfo info, string embeddingModel)
+    {
+        var md = new StringBuilder();
+        var inv = CultureInfo.InvariantCulture;
+
+        md.AppendLine($"# Retrieval eval {info.StartedAt.ToLocalTime():yyyy-MM-dd HH:mm}");
+        md.AppendLine();
+        md.AppendLine($"- **Embedding model:** {embeddingModel}{(info.Fake ? " (deterministic fake embedder, not a real model: the numbers say nothing about quality)" : "")}");
+        md.AppendLine($"- **Questions:** {summary.Results.Count}: {summary.AnswerableCount} answerable, {summary.Unanswerable.Count} unanswerable, {summary.NotRun.Count} not run");
+        md.AppendLine($"- **Duration:** {info.Duration.TotalSeconds.ToString("0.#", inv)} s");
+        md.AppendLine($"- **Query embedding tokens:** {summary.EmbeddingTokens:N0}");
+        md.AppendLine();
+
+        if (summary.NotRun.Count > 0)
+        {
+            md.AppendLine($"> **Incomplete run.** {summary.NotRun.Count} question(s) could not be searched (embeddings provider) and are left out of every metric: {Cell(summary.NotRun[0].Error ?? "")}");
+            md.AppendLine();
+        }
+
+        md.AppendLine("## Retrieval targets");
+        md.AppendLine();
+        md.AppendLine("| Target | Required | Actual | Result |");
+        md.AppendLine("|---|---|---|---|");
+        foreach (var target in summary.Targets)
+            md.AppendLine($"| {target.Name} | >= {ConsoleReport.Fixed(target.Required)} | {ConsoleReport.Fixed(target.Actual)} | {(target.Met ? "MET" : "**NOT MET**")} |");
+        md.AppendLine();
+
+        md.AppendLine("## Recall@4 and MRR by language pair");
+        md.AppendLine();
+        md.AppendLine("The pair is the question language, then the language of the expected document: es->en is a Spanish question over an English document.");
+        md.AppendLine();
+        md.AppendLine("| Pair | Questions | Recall@4 | MRR |");
+        md.AppendLine("|---|---|---|---|");
+        foreach (var metrics in summary.ByPair)
+            md.AppendLine($"| {metrics.Name} | {metrics.Questions} | {ConsoleReport.Fixed(metrics.RecallAt4)} | {ConsoleReport.Fixed(metrics.Mrr)} |");
+        md.AppendLine($"| **Overall** | **{summary.Overall.Questions}** | **{ConsoleReport.Fixed(summary.Overall.RecallAt4)}** | **{ConsoleReport.Fixed(summary.Overall.Mrr)}** |");
+        md.AppendLine();
+
+        md.AppendLine("## Relevance threshold (informational)");
+        md.AppendLine();
+        md.AppendLine($"- Unanswerable questions with `thresholdPassed=false` (the search says \"nothing relevant\"): **{summary.UnanswerableBelowThreshold}/{summary.Unanswerable.Count}**");
+        md.AppendLine($"- Answerable questions with `thresholdPassed=true` (the agent is given passages): **{summary.AnswerableAboveThreshold}/{summary.AnswerableCount}**");
+        foreach (var leak in summary.Unanswerable.Where(r => r.ThresholdPassed))
+            md.AppendLine($"  - passed the threshold without a document: {leak.Case.Id}: {Cell(leak.Case.Question)} (top: {string.Join(", ", leak.DocumentRanking)})");
+        md.AppendLine();
+
+        md.AppendLine($"## Misses ({summary.Misses.Count})");
+        if (summary.Misses.Count > 0)
+        {
+            md.AppendLine();
+            md.AppendLine("| Question | Niche | Pair | Expected | Top 4 documents (best chunk first) |");
+            md.AppendLine("|---|---|---|---|---|");
+            foreach (var miss in summary.Misses)
+                md.AppendLine($"| {miss.Case.Id}: {Cell(miss.Case.Question)} | {CaseLoader.Name(miss.Case.Niche)} | {miss.Pair} | {string.Join(", ", miss.Case.ExpectSources)} | {string.Join(", ", miss.Passages.Select(p => p.SourceId))} |");
+        }
+
+        md.AppendLine();
+        md.AppendLine("## Questions");
+        md.AppendLine();
+        md.AppendLine("| Question | Pair | Rank of the expected document | Passed the threshold |");
+        md.AppendLine("|---|---|---|---|");
+        foreach (var result in summary.Results)
+        {
+            var rank = result.NotRun ? "not run" : result.Case.Unanswerable ? "unanswerable" : result.Rank is { } r ? r.ToString(inv) : "missing";
+            md.AppendLine($"| {result.Case.Id} | {result.Pair ?? "-"} | {rank} | {(result.NotRun ? "-" : result.ThresholdPassed ? "yes" : "no")} |");
         }
 
         return md.ToString();

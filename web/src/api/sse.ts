@@ -65,7 +65,7 @@ export class SseParser {
   }
 }
 
-const TRACE_TYPES: readonly string[] = ['LlmCall', 'ToolCall', 'Guardrail', 'Handoff', 'Error']
+const TRACE_TYPES: readonly string[] = ['LlmCall', 'ToolCall', 'Retrieval', 'Guardrail', 'Handoff', 'Error']
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

@@ -11,14 +11,16 @@ import {
   type StepTone,
   type TraceStep,
 } from '../lib/trace'
-import { AlertIcon, CloseIcon, ShieldIcon, SparkIcon, TraceIcon, UserIcon, WrenchIcon } from './icons'
+import { AlertIcon, CloseIcon, SearchIcon, ShieldIcon, SparkIcon, TraceIcon, UserIcon, WrenchIcon } from './icons'
 import { JsonViewer } from './JsonViewer'
+import { RetrievalDetails } from './RetrievalDetails'
 
 const STICK_THRESHOLD_PX = 80
 
 const TONES: Record<StepTone, { badge: string; card: string; icon: typeof SparkIcon }> = {
   model: { badge: 'bg-sky-100 text-sky-900 ring-sky-300', card: 'border-slate-200 bg-white', icon: SparkIcon },
   tool: { badge: 'bg-violet-100 text-violet-900 ring-violet-300', card: 'border-slate-200 bg-white', icon: WrenchIcon },
+  retrieval: { badge: 'bg-teal-100 text-teal-900 ring-teal-300', card: 'border-teal-200 bg-white', icon: SearchIcon },
   guardrail: { badge: 'bg-amber-100 text-amber-900 ring-amber-300', card: 'border-amber-300 bg-amber-50', icon: ShieldIcon },
   handoff: { badge: 'bg-emerald-100 text-emerald-900 ring-emerald-300', card: 'border-emerald-300 bg-emerald-50', icon: UserIcon },
   error: { badge: 'bg-red-100 text-red-900 ring-red-300', card: 'border-red-300 bg-red-50', icon: AlertIcon },
@@ -66,6 +68,7 @@ function StepItem({ step, line }: { step: TraceStep; line: boolean }) {
           ))}
         </div>
         <p className="mt-1 text-[12px] leading-snug text-slate-800">{step.summary}</p>
+        {step.retrieval && <RetrievalDetails retrieval={step.retrieval} />}
         {step.excerpt && (
           <blockquote className="mt-1 border-l-2 border-slate-300 pl-2 text-[12px] italic leading-snug text-slate-700">
             {step.excerpt}

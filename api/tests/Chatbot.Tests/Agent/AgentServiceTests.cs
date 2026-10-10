@@ -154,7 +154,7 @@ public class AgentServiceTests(PostgresFixture postgres)
         var options = Assert.Single(llm.Options)!;
         Assert.Equal(321, options.MaxOutputTokens);
         Assert.Equal(
-            ["search_catalog", "get_offering_details", "check_availability", "create_booking", "handoff_to_human"],
+            ["search_catalog", "get_offering_details", "check_availability", "create_booking", "handoff_to_human", "search_knowledge_base"],
             options.Tools!.Select(t => t.Name));
     }
 
@@ -238,7 +238,7 @@ public class AgentServiceTests(PostgresFixture postgres)
         var sessionId = await world.NewSessionAsync();
         await using var db = world.NewDb();
         var service = new AgentService(db, unconfigured, Microsoft.Extensions.Options.Options.Create(world.Options), world.Clock,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<AgentService>.Instance);
+            world.NewKnowledge(db), Microsoft.Extensions.Logging.Abstractions.NullLogger<AgentService>.Instance);
 
         var events = new List<AgentEvent>();
         await foreach (var e in service.RunAsync(sessionId, "hello there"))

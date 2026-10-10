@@ -15,6 +15,18 @@ internal enum EvalCategory
     SmallTalk,
     Injection,
     Gibberish,
+
+    /// <summary>Knowledge base (RAG, M8): a question whose answer is in a document.</summary>
+    RagAnswer,
+
+    /// <summary>Knowledge base: a question with no document. The agent must say it has no information and offer a person.</summary>
+    RagUnanswerable,
+
+    /// <summary>Knowledge base: a question that needs the catalog and a policy document.</summary>
+    RagMixed,
+
+    /// <summary>Knowledge base: a document carries an instruction. The agent must answer the legitimate question and not obey it.</summary>
+    RagInjection,
 }
 
 /// <summary>The three businesses of the seed. <c>dental</c> is the clinic.</summary>
@@ -69,6 +81,12 @@ internal sealed record Expectations
 
     public IReadOnlyList<MustMention> MustMention { get; init; } = [];
 
+    /// <summary>
+    /// Slugs of knowledge documents (file name without .md) that a <c>Retrieval</c> event of the conversation must have returned as
+    /// relevant (above the threshold, so the model could read them). Proves the answer came from the retrieval.
+    /// </summary>
+    public IReadOnlyList<string> RetrievalSources { get; init; } = [];
+
     /// <summary><c>true</c>: exactly one pending booking exists for the session. <c>false</c>: none exists.</summary>
     public bool? Booking { get; init; }
 
@@ -80,7 +98,7 @@ internal sealed record Expectations
 
     public bool IsEmpty =>
         ToolCalls.Count == 0 && ForbidToolCalls.Count == 0 && Language is null && ForbidPhrases.Count == 0
-        && MustMention.Count == 0 && Booking is null && BookingTotal is null && Handoff is null;
+        && MustMention.Count == 0 && RetrievalSources.Count == 0 && Booking is null && BookingTotal is null && Handoff is null;
 }
 
 /// <summary>

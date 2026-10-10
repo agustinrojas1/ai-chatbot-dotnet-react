@@ -1,4 +1,5 @@
 using Chatbot.Core.Domain;
+using Chatbot.Infrastructure.Knowledge;
 using Microsoft.EntityFrameworkCore;
 
 namespace Chatbot.Infrastructure.Persistence;
@@ -15,9 +16,12 @@ public class ChatbotDbContext(DbContextOptions<ChatbotDbContext> options) : DbCo
     public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
     public DbSet<TraceEvent> TraceEvents => Set<TraceEvent>();
     public DbSet<ModelPricing> ModelPricings => Set<ModelPricing>();
+    public DbSet<KnowledgeDocument> KnowledgeDocuments => Set<KnowledgeDocument>();
+    public DbSet<KnowledgeChunk> KnowledgeChunks => Set<KnowledgeChunk>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasPostgresExtension("vector"); // pgvector: the migration runs CREATE EXTENSION
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ChatbotDbContext).Assembly);
     }
 

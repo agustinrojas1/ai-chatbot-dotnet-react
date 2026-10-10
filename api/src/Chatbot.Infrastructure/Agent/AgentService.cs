@@ -4,6 +4,7 @@ using Chatbot.Core.Agent;
 using Chatbot.Core.Domain;
 using Chatbot.Infrastructure.Agent.Tools;
 using Chatbot.Infrastructure.Agent.Tracing;
+using Chatbot.Infrastructure.Knowledge;
 using Chatbot.Infrastructure.Llm;
 using Chatbot.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,7 @@ public sealed class AgentService(
     [FromKeyedServices(LlmClientFactory.ServiceKey)] IChatClient llm,
     IOptions<AgentOptions> options,
     TimeProvider clock,
+    KnowledgeSearch knowledge,
     ILogger<AgentService> logger)
 {
     private const string UnknownModel = "unknown";
@@ -169,7 +171,7 @@ public sealed class AgentService(
                 client.MaximumIterationsPerRequest = options.Value.MaxIterations;
                 client.MaximumConsecutiveErrorsPerRequest = MaxConsecutiveToolErrors;
                 client.IncludeDetailedErrors = true;
-                client.FunctionInvoker = new ToolCallTracer(run.Recorder).InvokeAsync;
+                client.FunctionInvoker = new ToolCallTracer(run.Recorder, run.Tools).InvokeAsync;
             })
             // ChatClientBuilder wraps in call order (first Use = outermost), so a `.Use(...)` placed below
             // UseFunctionInvocation sees every individual model call.
@@ -268,7 +270,7 @@ public sealed class AgentService(
     {
         var chatOptions = new ChatOptions
         {
-            Tools = AgentToolFactory.Create(db, run.Tools, clock),
+            Tools = AgentToolFactory.Create(db, run.Tools, clock, knowledge),
             MaxOutputTokens = options.Value.MaxOutputTokens,
         };
 

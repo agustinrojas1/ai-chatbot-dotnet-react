@@ -1,6 +1,7 @@
 using Chatbot.Api.Endpoints;
 using Chatbot.Api.Security;
 using Chatbot.Infrastructure;
+using Chatbot.Infrastructure.Knowledge;
 using Chatbot.Infrastructure.Persistence;
 using Chatbot.Infrastructure.Seeding;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,22 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// `dotnet run --project api/src/Chatbot.Api -- ingest`: index the knowledge documents and exit (SPEC 7.6). It is also the explicit
+// step to run in production, where the API itself neither migrates nor ingests.
+if (args.Contains("ingest", StringComparer.OrdinalIgnoreCase))
+{
+    try
+    {
+        await KnowledgeStartup.RunIngestCommandAsync(app.Services, CancellationToken.None);
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogCritical(ex, "Knowledge ingestion failed.");
+        return 1;
+    }
+}
+
 // Development only: apply migrations and seed at startup. Production applies migrations as an explicit step.
 if (app.Environment.IsDevelopment())
 {
@@ -25,6 +42,9 @@ if (app.Environment.IsDevelopment())
     await scope.ServiceProvider.GetRequiredService<ChatbotDbContext>().Database.MigrateAsync();
     await scope.ServiceProvider.GetRequiredService<IDatabaseSeeder>().SeedAsync(CancellationToken.None);
 }
+
+// After the seed (the documents belong to the seeded businesses). Never stops the startup.
+await KnowledgeStartup.AutoIngestAsync(app.Services, app.Environment.IsDevelopment(), app.Logger, CancellationToken.None);
 
 if (!app.Environment.IsDevelopment())
     StartupChecks.WarnAboutMissingSecrets(app.Logger, app.Configuration);
@@ -43,6 +63,7 @@ app.MapSessionHistoryEndpoints();
 app.MapAdminEndpoints();
 
 app.Run();
+return 0;
 
 internal sealed class PostgresHealthCheck(IConfiguration configuration) : IHealthCheck
 {

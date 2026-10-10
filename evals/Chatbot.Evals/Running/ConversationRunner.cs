@@ -65,6 +65,7 @@ internal sealed class ConversationRunner(IServiceProvider services)
     {
         var reply = new StringBuilder();
         var toolCalls = new List<ToolCallRecord>();
+        var retrievals = new List<RetrievalRecord>();
         string? error = null;
         RunCompleted? completed = null;
         var monitor = services.GetService<QuotaMonitor>();
@@ -83,6 +84,11 @@ internal sealed class ConversationRunner(IServiceProvider services)
                         break;
                     case Trace { Type: TraceEventType.ToolCall } trace:
                         toolCalls.Add(new ToolCallRecord(trace.Name, trace.Input, trace.Output));
+                        break;
+                    case Trace { Type: TraceEventType.Retrieval } retrieval:
+                        // The trace records a knowledge search as a Retrieval event instead of a ToolCall; for the cases it is both.
+                        toolCalls.Add(new ToolCallRecord(retrieval.Name, retrieval.Input, retrieval.Output));
+                        retrievals.Add(ReadRetrieval(retrieval));
                         break;
                     case RunCompleted done:
                         completed = done;
@@ -113,6 +119,7 @@ internal sealed class ConversationRunner(IServiceProvider services)
             InfrastructureError = refusedByProvider ? ProviderQuota : null,
             Reply = reply.ToString().Trim(),
             ToolCalls = toolCalls,
+            Retrievals = retrievals,
             Error = error,
             TokensIn = completed?.TokensIn ?? 0,
             TokensOut = completed?.TokensOut ?? 0,
@@ -123,6 +130,27 @@ internal sealed class ConversationRunner(IServiceProvider services)
             Bookings = bookings,
             Handoffs = handoffs,
         };
+    }
+
+    private static RetrievalRecord ReadRetrieval(Trace trace)
+    {
+        var query = trace.Input is { ValueKind: JsonValueKind.Object } input && input.TryGetProperty("query", out var q) ? q.GetString() ?? "" : "";
+        var passed = false;
+        var passages = new List<RetrievedPassage>();
+        if (trace.Output is { ValueKind: JsonValueKind.Object } output)
+        {
+            passed = output.TryGetProperty("thresholdPassed", out var tp) && tp.ValueKind == JsonValueKind.True;
+            if (output.TryGetProperty("passages", out var list) && list.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var passage in list.EnumerateArray())
+                {
+                    if (passage.TryGetProperty("sourceId", out var id) && id.GetString() is { } sourceId)
+                        passages.Add(new RetrievedPassage(sourceId, passage.TryGetProperty("aboveThreshold", out var above) && above.ValueKind == JsonValueKind.True));
+                }
+            }
+        }
+
+        return new RetrievalRecord(query, passed, passages);
     }
 
     /// <summary>What the tools left in the database for this session: bookings (with the total recomputed from catalog prices) and handoffs.</summary>

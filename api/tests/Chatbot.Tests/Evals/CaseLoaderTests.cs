@@ -217,4 +217,55 @@ public class CaseLoaderTests
         Assert.Contains(cases, c => c.Expect.Handoff == true);
         Assert.Contains(cases, c => c.Expect.MustMention.OfType<MentionFromTool>().Any());
     }
+
+    [Fact]
+    public void Reads_the_knowledge_base_categories_and_the_expected_retrieval_sources()
+    {
+        var cases = CaseLoader.Parse("test.yaml", """
+            - id: rag-case
+              category: rag_unanswerable
+              niche: dental
+              turns:
+                - say: "Do you do root canals?"
+                  expectRetrievalSources: [cancelacion-y-no-show]
+              expectRetrievalSources: [a-doc, other-doc]
+              expectToolCalls: [{ name: search_knowledge_base }]
+            - id: rag-case-2
+              category: ragMixed
+              niche: restaurant
+              turns: ["hi"]
+              forbidToolCalls: [search_knowledge_base]
+            """);
+
+        Assert.Equal([EvalCategory.RagUnanswerable, EvalCategory.RagMixed], cases.Select(c => c.Category));
+        Assert.Equal(["a-doc", "other-doc"], cases[0].Expect.RetrievalSources);
+        Assert.Equal(["cancelacion-y-no-show"], cases[0].Turns[0].Expect.RetrievalSources);
+        Assert.Equal("rag_unanswerable", CaseLoader.Name(EvalCategory.RagUnanswerable));
+        Assert.Equal(EvalCategory.RagInjection, CaseLoader.ParseCategory("rag_injection"));
+    }
+
+    [Fact]
+    public void The_shipped_knowledge_base_cases_cover_the_m8_spec()
+    {
+        var cases = CaseLoader.LoadDirectory(EvalTestSupport.ShippedCasesDirectory());
+        var rag = cases.Where(c => c.Category is EvalCategory.RagAnswer or EvalCategory.RagUnanswerable or EvalCategory.RagMixed or EvalCategory.RagInjection).ToList();
+
+        Assert.True(rag.Count >= 18, $"M8 asks for at least 15 end-to-end cases, the task for 18; found {rag.Count}.");
+        Assert.True(cases.Count(c => c.Category == EvalCategory.RagUnanswerable) >= 4);
+        Assert.Equal(3, cases.Count(c => c.Category == EvalCategory.RagInjection));
+        Assert.Equal(Enum.GetValues<EvalNiche>(), rag.Where(c => c.Category == EvalCategory.RagInjection).Select(c => c.Niche).Order());
+        Assert.Equal(Enum.GetValues<EvalNiche>(), rag.Select(c => c.Niche).Distinct().Order());
+        Assert.All(rag.Where(c => c.Category is EvalCategory.RagAnswer or EvalCategory.RagMixed or EvalCategory.RagInjection),
+            c => Assert.Contains(c.Expect.ToolCalls, t => t.Name == "search_knowledge_base"));
+        Assert.All(rag.Where(c => c.Category == EvalCategory.RagMixed),
+            c => Assert.Contains(c.Expect.ToolCalls, t => t.Name == "search_catalog"));
+        Assert.All(rag.Where(c => c.Category is EvalCategory.RagAnswer or EvalCategory.RagInjection or EvalCategory.RagMixed),
+            c => Assert.NotEmpty(c.Expect.RetrievalSources));
+        Assert.All(rag.Where(c => c.Category == EvalCategory.RagUnanswerable),
+            c => Assert.True(c.Expect.MustMention.Count + c.Turns.Sum(t => t.Expect.MustMention.Count) > 0, c.Id));
+        Assert.All(rag.Where(c => c.Category == EvalCategory.RagInjection), c => Assert.NotEmpty(c.Expect.ForbidPhrases));
+        Assert.Contains(rag, c => c.Expect.Language == ReplyLanguage.Spanish);
+        Assert.Contains(rag, c => c.Expect.Language == ReplyLanguage.English);
+        Assert.DoesNotContain(cases, c => c.Id.StartsWith("ret-"));
+    }
 }

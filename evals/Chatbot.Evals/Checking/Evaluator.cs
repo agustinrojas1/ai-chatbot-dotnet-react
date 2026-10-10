@@ -61,7 +61,7 @@ internal static class Evaluator
         "confirmed", "confirmada", "confirmado",
         "I've sent you an email", "I have sent you an email", "I sent you an email", "te envié un correo", "te envié un email", "te mandé un mail",
         "COMMON RULES", "WHATSAPP FORMATTING RULES", "CONVERSATION QUALITY", "FEW-SHOT EXAMPLES", "BUSINESS FACTS", "Session status:",
-        "search_catalog", "get_offering_details", "check_availability", "create_booking", "handoff_to_human", "AwaitingHuman",
+        "search_catalog", "get_offering_details", "check_availability", "create_booking", "handoff_to_human", "search_knowledge_base", "<passage", "AwaitingHuman",
     ];
 
     public static CaseResult Evaluate(Transcript transcript)
@@ -157,6 +157,7 @@ internal static class Evaluator
         var reply = string.Join("\n", scope.Select(t => t.Reply));
 
         CheckToolCalls(expect, calls, prefix, checks);
+        CheckRetrievalSources(expect, scope, prefix, checks);
 
         foreach (var mention in expect.MustMention)
             checks.Add(CheckMention(mention, reply, calls, prefix));
@@ -203,6 +204,21 @@ internal static class Evaluator
             var count = calls.Count(c => c.Name == name);
             checks.Add(new CheckResult(CheckDimension.ToolUse, $"{prefix}does not call {name}", count == 0,
                 count == 0 ? null : $"called {count} time(s): {Describe(calls, name)}"));
+        }
+    }
+
+    /// <summary>Each expected document must be among the relevant passages of some search of the scope: the answer can only come from what the model was given.</summary>
+    private static void CheckRetrievalSources(Expectations expect, IReadOnlyList<TurnResult> scope, string prefix, List<CheckResult> checks)
+    {
+        var searches = scope.SelectMany(t => t.Retrievals).ToList();
+        foreach (var slug in expect.RetrievalSources)
+        {
+            var found = searches.Any(r => r.Passages.Any(p => p.Relevant && p.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase)));
+            var returned = searches.SelectMany(r => r.Passages).Where(p => p.Relevant).Select(p => p.SourceId).Distinct().ToList();
+            checks.Add(new CheckResult(CheckDimension.ToolUse, $"{prefix}retrieval returned {slug}", found,
+                found ? null : searches.Count == 0
+                    ? "search_knowledge_base was not called"
+                    : $"relevant passages returned: {(returned.Count == 0 ? "none" : string.Join(", ", returned))}"));
         }
     }
 

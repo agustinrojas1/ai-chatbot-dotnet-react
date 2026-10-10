@@ -181,7 +181,7 @@ public class CatalogToolsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Factory_ExposesTheFiveToolsWithoutBusinessOrSessionParameters()
+    public async Task Factory_ExposesTheSixToolsWithoutBusinessOrSessionParameters()
     {
         var world = await ToolWorld.CreateAsync(postgres);
         await using var session = await world.NewSessionAsync(world.A);
@@ -189,7 +189,7 @@ public class CatalogToolsTests(PostgresFixture postgres)
         var functions = session.Tools.OfType<Microsoft.Extensions.AI.AIFunction>().ToList();
 
         Assert.Equal(
-            ["check_availability", "create_booking", "get_offering_details", "handoff_to_human", "search_catalog"],
+            ["check_availability", "create_booking", "get_offering_details", "handoff_to_human", "search_catalog", "search_knowledge_base"],
             functions.Select(f => f.Name).Order().ToArray());
         Assert.All(functions, f =>
         {

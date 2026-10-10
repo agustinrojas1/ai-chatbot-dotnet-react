@@ -1,0 +1,492 @@
+# Retrieval eval (no model, SPEC 12 "Evals de RAG"): `dotnet run --project evals/Chatbot.Evals -- --retrieval`.
+# Each question is searched with KnowledgeSearch in the knowledge base of its niche. `expectSources` are document slugs
+# (file name without .md): the question passes when a chunk of one of them is in the top 4. The language pair
+# (question language -> language of the expected document) is worked out from the documents, so es->en and en->es
+# are the cross-language ones. `unanswerable: true` questions have no document: they only measure the relevance
+# threshold (informational, not a pass/fail).
+
+# ---- dental ----
+
+- id: ret-d-q01-en
+  niche: dental
+  language: en
+  question: "How much is the late cancellation fee?"
+  expectSources: [cancelacion-y-no-show]
+
+- id: ret-d-q02-es
+  niche: dental
+  language: es
+  question: "¿Cuánto es el cargo si no me presento a mi turno y no avisé?"
+  expectSources: [cancelacion-y-no-show]
+
+- id: ret-d-q03-en
+  niche: dental
+  language: en
+  question: "What phone number do I call to cancel an appointment?"
+  expectSources: [cancelacion-y-no-show]
+
+- id: ret-d-q04-en
+  niche: dental
+  language: en
+  question: "How many times can I reschedule without a charge?"
+  expectSources: [rescheduling-appointments]
+
+- id: ret-d-q05-es
+  niche: dental
+  language: es
+  question: "¿Cuál es el copago con Cigna DHMO?"
+  expectSources: [seguros-y-verificacion]
+
+- id: ret-d-q06-en
+  niche: dental
+  language: en
+  question: "How long does the front desk take to verify my insurance?"
+  expectSources: [seguros-y-verificacion]
+
+- id: ret-d-q07-es
+  niche: dental
+  language: es
+  question: "¿Puedo pagar un tratamiento grande en cuotas mensuales?"
+  expectSources: [payment-methods-and-financing]
+
+- id: ret-d-q08-en
+  niche: dental
+  language: en
+  question: "How early should I arrive for my first visit?"
+  expectSources: [first-visit-checklist]
+
+- id: ret-d-q09-es
+  niche: dental
+  language: es
+  question: "¿Cuándo debe ir mi hijo por primera vez al dentista?"
+  expectSources: [pediatric-visits-policy]
+
+- id: ret-d-q10-es
+  niche: dental
+  language: es
+  question: "¿Cuánto tiempo debo evitar el café después de blanquearme los dientes?"
+  expectSources: [cuidados-tras-blanqueamiento]
+
+- id: ret-d-q11-en
+  niche: dental
+  language: en
+  question: "When can I eat normally after a filling?"
+  expectSources: [cuidados-tras-obturacion]
+
+- id: ret-d-q12-en
+  niche: dental
+  language: en
+  question: "How long must I avoid straws after an extraction?"
+  expectSources: [post-extraction-care]
+
+- id: ret-d-q13-es
+  niche: dental
+  language: es
+  question: "¿Cuál es el número de urgencias fuera de horario?"
+  expectSources: [urgencias-dentales-y-fuera-de-horario]
+
+- id: ret-d-q14-en
+  niche: dental
+  language: en
+  question: "Are dental X-rays safe?"
+  expectSources: [radiografias-y-embarazo]
+
+- id: ret-d-q15-es
+  niche: dental
+  language: es
+  question: "¿Debo posponer las radiografías durante el embarazo?"
+  expectSources: [radiografias-y-embarazo]
+
+- id: ret-d-q16-es
+  niche: dental
+  language: es
+  question: "¿Qué señal puedo usar si me angustio durante el tratamiento?"
+  expectSources: [sedation-and-anxiety-options]
+
+- id: ret-d-q17-en
+  niche: dental
+  language: en
+  question: "How much parking is free at your clinic?"
+  expectSources: [accessibility-and-parking]
+
+- id: ret-d-q18-en
+  niche: dental
+  language: en
+  question: "How often should I get a professional cleaning?"
+  expectSources: [frecuencia-de-limpieza-e-higiene]
+
+- id: ret-d-q19-es
+  niche: dental
+  language: es
+  question: "¿En cuánto tiempo puedo pedir una copia de mi historia clínica?"
+  expectSources: [privacidad-de-historias-clinicas]
+
+- id: ret-d-q20-en
+  niche: dental
+  language: en
+  question: "Are you open on December 24?"
+  expectSources: [horarios-y-feriados]
+
+- id: ret-d-q21-es
+  niche: dental
+  language: es
+  question: "¿Cuánto tiempo cubre la garantía de un empaste?"
+  expectSources: [warranty-fillings-whitening]
+
+- id: ret-d-q22-en
+  niche: dental
+  language: en
+  question: "Do you do braces?"
+  expectSources: [partner-referral-note]
+
+- id: ret-d-un01-en
+  niche: dental
+  language: en
+  question: "Do you offer root canal treatment?"
+  unanswerable: true
+
+- id: ret-d-un02-es
+  niche: dental
+  language: es
+  question: "¿Tienen una guardería para niños mientras me atienden?"
+  unanswerable: true
+
+- id: ret-d-un03-en
+  niche: dental
+  language: en
+  question: "Can I pay with Bitcoin?"
+  unanswerable: true
+
+- id: ret-d-un04-es
+  niche: dental
+  language: es
+  question: "¿Ofrecen Botox u otros tratamientos de dermatología?"
+  unanswerable: true
+
+- id: ret-d-un05-en
+  niche: dental
+  language: en
+  question: "Do you treat pets?"
+  unanswerable: true
+
+# ---- realestate ----
+
+- id: ret-r-q01-es
+  niche: realestate
+  language: es
+  question: "¿Cuánto puede pesar una mascota para vivir en uno de sus alquileres?"
+  expectSources: [politica-mascotas]
+
+- id: ret-r-q02-en
+  niche: realestate
+  language: en
+  question: "How much extra deposit do I pay per pet?"
+  expectSources: [politica-mascotas]
+
+- id: ret-r-q03-es
+  niche: realestate
+  language: es
+  question: "¿Qué ingresos mensuales necesito para alquilar?"
+  expectSources: [requisitos-alquiler]
+
+- id: ret-r-q04-en
+  niche: realestate
+  language: en
+  question: "Which insurer issues the caución policy?"
+  expectSources: [requisitos-alquiler]
+
+- id: ret-r-q05-es
+  niche: realestate
+  language: es
+  question: "¿En cuánto tiempo me devuelven el depósito?"
+  expectSources: [deposito-y-costos-iniciales]
+
+- id: ret-r-q06-es
+  niche: realestate
+  language: es
+  question: "¿Cada cuánto sube el alquiler?"
+  expectSources: [rent-adjustments]
+
+- id: ret-r-q07-en
+  niche: realestate
+  language: en
+  question: "Which index do you use for rent adjustments?"
+  expectSources: [rent-adjustments]
+
+- id: ret-r-q08-en
+  niche: realestate
+  language: en
+  question: "When are the monthly building expenses (expensas) due?"
+  expectSources: [expensas-explicadas]
+
+- id: ret-r-q09-es
+  niche: realestate
+  language: es
+  question: "¿Cuánto son los honorarios que paga el inquilino?"
+  expectSources: [honorarios-inmobiliaria]
+
+- id: ret-r-q10-en
+  niche: realestate
+  language: en
+  question: "I want to leave after 4 months. What is the penalty?"
+  expectSources: [duracion-y-rescision]
+
+- id: ret-r-q11-es
+  niche: realestate
+  language: es
+  question: "¿Cuántas personas pueden ir a una visita?"
+  expectSources: [visitas-y-cancelaciones]
+
+- id: ret-r-q12-en
+  niche: realestate
+  language: en
+  question: "How much notice do I need to cancel a visit?"
+  expectSources: [visitas-y-cancelaciones]
+
+- id: ret-r-q13-es
+  niche: realestate
+  language: es
+  question: "¿Cuánto son los sellos al comprar?"
+  expectSources: [proceso-de-compra]
+
+- id: ret-r-q14-en
+  niche: realestate
+  language: en
+  question: "What is the transfer tax (ITI) when buying a property?"
+  expectSources: [proceso-de-compra]
+
+- id: ret-r-q15-es
+  niche: realestate
+  language: es
+  question: "¿Cuánto dura la preaprobación hipotecaria?"
+  expectSources: [hipotecas-y-preaprobacion]
+
+- id: ret-r-q16-es
+  niche: realestate
+  language: es
+  question: "¿Cuánto efectivo en dólares puedo pagar por operación?"
+  expectSources: [foreign-buyers-and-usd-payments]
+
+- id: ret-r-q17-en
+  niche: realestate
+  language: en
+  question: "How soon must I sign the inventory after moving into a furnished unit?"
+  expectSources: [furnished-and-inventory]
+
+- id: ret-r-q18-es
+  niche: realestate
+  language: es
+  question: "¿Quién paga las reparaciones chicas?"
+  expectSources: [maintenance-responsibilities]
+
+- id: ret-r-q19-en
+  niche: realestate
+  language: en
+  question: "Can I list the apartment on Airbnb while I travel?"
+  expectSources: [subletting-and-short-term-rentals]
+
+- id: ret-r-q20-es
+  niche: realestate
+  language: es
+  question: "¿A qué hora puedo retirar las llaves el día de inicio?"
+  expectSources: [move-in-and-keys]
+
+- id: ret-r-q21-en
+  niche: realestate
+  language: en
+  question: "How many days do I have to transfer the AySA water account to my name?"
+  expectSources: [utilities-transfer]
+
+- id: ret-r-q22-es
+  niche: realestate
+  language: es
+  question: "¿Con cuánta anticipación avisa el dueño antes de una visita de compradores?"
+  expectSources: [tenant-rights-when-selling]
+
+- id: ret-r-q23-en
+  niche: realestate
+  language: en
+  question: "What time does the building gym open?"
+  expectSources: [amenities-accessibility-and-work-use]
+
+- id: ret-r-q24-es
+  niche: realestate
+  language: es
+  question: "¿Puedo trabajar desde casa en el alquiler?"
+  expectSources: [amenities-accessibility-and-work-use]
+
+- id: ret-r-un01-en
+  niche: realestate
+  language: en
+  question: "Do your rentals include a parking space or garage?"
+  unanswerable: true
+
+- id: ret-r-un02-es
+  niche: realestate
+  language: es
+  question: "¿Cuánto es el ABL de la propiedad?"
+  unanswerable: true
+
+- id: ret-r-un03-en
+  niche: realestate
+  language: en
+  question: "Do you offer a moving truck service for my move?"
+  unanswerable: true
+
+- id: ret-r-un04-es
+  niche: realestate
+  language: es
+  question: "¿Qué escuelas hay cerca del loft de San Telmo?"
+  unanswerable: true
+
+- id: ret-r-un05-en
+  niche: realestate
+  language: en
+  question: "Is there a discount if I pay a full year in advance?"
+  unanswerable: true
+
+# ---- restaurant ----
+
+- id: ret-n-q01-en
+  niche: restaurant
+  language: en
+  question: "How far from the restaurant do you deliver?"
+  expectSources: [zonas-tiempos-y-cargos-de-delivery]
+
+- id: ret-n-q03-es
+  niche: restaurant
+  language: es
+  question: "¿Cuánto cuesta el envío a una dirección a unos 1,5 km?"
+  expectSources: [zonas-tiempos-y-cargos-de-delivery]
+
+- id: ret-n-q05-en
+  niche: restaurant
+  language: en
+  question: "From what order total is delivery free?"
+  expectSources: [zonas-tiempos-y-cargos-de-delivery]
+
+- id: ret-n-q07-es
+  niche: restaurant
+  language: es
+  question: "¿La masa sin TACC se cocina en un horno aparte?"
+  expectSources: [masa-sin-tacc-y-contaminacion-cruzada]
+
+- id: ret-n-q09-en
+  niche: restaurant
+  language: en
+  question: "What tip is suggested for delivery?"
+  expectSources: [pagos-y-propinas]
+
+- id: ret-n-q11-es
+  niche: restaurant
+  language: es
+  question: "¿Cuánto tiempo tengo para cancelar un pedido sin cargo?"
+  expectSources: [modificar-o-cancelar-pedido]
+
+- id: ret-n-q13-en
+  niche: restaurant
+  language: en
+  question: "How far in advance do I need to order catering?"
+  expectSources: [catering-y-bandejas-para-fiestas]
+
+- id: ret-n-q15-es
+  niche: restaurant
+  language: es
+  question: "¿Qué seña piden para reservar catering?"
+  expectSources: [catering-y-bandejas-para-fiestas]
+
+- id: ret-n-q17-en
+  niche: restaurant
+  language: en
+  question: "When is the last delivery order accepted?"
+  expectSources: [horarios-y-feriados]
+
+- id: ret-n-q19-es
+  niche: restaurant
+  language: es
+  question: "¿Cuántos puntos necesito para un postre gratis?"
+  expectSources: [programa-de-fidelidad]
+
+- id: ret-n-q21-en
+  niche: restaurant
+  language: en
+  question: "Can I book a table for a group by WhatsApp?"
+  expectSources: [grupos-grandes-y-pedidos-de-grupo]
+
+- id: ret-n-q23-es
+  niche: restaurant
+  language: es
+  question: "¿Cuánto tiempo recalento una pizza en el horno?"
+  expectSources: [recalentar-y-guardar-sobras]
+
+- id: ret-n-q25-en
+  niche: restaurant
+  language: en
+  question: "Do you use nuts in your recipes?"
+  expectSources: [allergens-and-nut-policy]
+
+- id: ret-n-q27-es
+  niche: restaurant
+  language: es
+  question: "¿Qué descuento tienen los pedidos para retirar?"
+  expectSources: [pickup-policy]
+
+- id: ret-n-q29-en
+  niche: restaurant
+  language: en
+  question: "What do I get if my delivery arrives late?"
+  expectSources: [late-or-wrong-order-refunds]
+
+- id: ret-n-q31-es
+  niche: restaurant
+  language: es
+  question: "¿Cuántos invitados entran en el salón privado?"
+  expectSources: [private-events-and-birthdays]
+
+- id: ret-n-q33-en
+  niche: restaurant
+  language: en
+  question: "Do you have high chairs for kids?"
+  expectSources: [kids-menu-and-high-chairs]
+
+- id: ret-n-q35-es
+  niche: restaurant
+  language: es
+  question: "¿Quién les provee la mozzarella fresca?"
+  expectSources: [ingredient-sourcing]
+
+- id: ret-n-q37-en
+  niche: restaurant
+  language: en
+  question: "What amounts do gift cards come in?"
+  expectSources: [gift-cards]
+
+- id: ret-n-q39-es
+  niche: restaurant
+  language: es
+  question: "¿Cuándo está abierto el patio?"
+  expectSources: [dog-friendly-patio]
+
+- id: ret-n-un01-en
+  niche: restaurant
+  language: en
+  question: "Do you offer valet parking?"
+  unanswerable: true
+
+- id: ret-n-un02-es
+  niche: restaurant
+  language: es
+  question: "¿Cómo se llama el chef principal?"
+  unanswerable: true
+
+- id: ret-n-un03-en
+  niche: restaurant
+  language: en
+  question: "Can I pay for my order in Bitcoin?"
+  unanswerable: true
+
+- id: ret-n-un04-es
+  niche: restaurant
+  language: es
+  question: "¿Hay franquicias disponibles para abrir un Luigi's en otra ciudad?"
+  unanswerable: true

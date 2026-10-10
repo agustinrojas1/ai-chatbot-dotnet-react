@@ -1,10 +1,12 @@
 using System.Runtime.CompilerServices;
 using Chatbot.Core.Domain;
 using Chatbot.Infrastructure.Agent;
+using Chatbot.Infrastructure.Knowledge;
 using Chatbot.Infrastructure.Llm;
 using Chatbot.Infrastructure.Persistence;
 using Chatbot.Infrastructure.Seeding;
 using Chatbot.Tests.Data;
+using Chatbot.Tests.Knowledge;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -132,6 +134,15 @@ internal sealed class AgentWorld
     public AgentOptions Options { get; }
     public TimeProvider Clock { get; } = new TickingClock(DateTimeOffset.UtcNow);
 
+    /// <summary>The deterministic embeddings behind every knowledge search of this world.</summary>
+    public FakeEmbeddingGenerator Embeddings { get; } = new();
+
+    public KnowledgeOptions KnowledgeSettings { get; set; } = TestKnowledge.SearchSettings();
+
+    public Embedder Embedder => field ??= TestKnowledge.NewEmbedder(Embeddings);
+
+    public KnowledgeSearch NewKnowledge(ChatbotDbContext db) => TestKnowledge.NewSearch(db, Embedder, KnowledgeSettings);
+
     public static async Task<AgentWorld> CreateAsync(PostgresFixture postgres, ScriptedChatClient llm, AgentOptions? options = null)
     {
         var world = new AgentWorld(await postgres.CreateMigratedDatabaseAsync(), llm, options ?? new AgentOptions());
@@ -143,7 +154,7 @@ internal sealed class AgentWorld
     public ChatbotDbContext NewDb() => PostgresFixture.CreateContext(ConnectionString);
 
     public AgentService NewService(ChatbotDbContext db) =>
-        new(db, Llm, Microsoft.Extensions.Options.Options.Create(Options), Clock, NullLogger<AgentService>.Instance);
+        new(db, Llm, Microsoft.Extensions.Options.Options.Create(Options), Clock, NewKnowledge(db), NullLogger<AgentService>.Instance);
 
     public async Task<Guid> NewSessionAsync(Niche niche = Niche.Clinic, SessionStatus status = SessionStatus.Active, string? language = null)
     {

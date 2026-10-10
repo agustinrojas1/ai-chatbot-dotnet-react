@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-chatbot}
       POSTGRES_USER: ${POSTGRES_USER:-chatbot}
@@ -29,6 +29,13 @@ services:
       Llm__Fallback__BaseUrl: ${LLM_FALLBACK_BASE_URL:-https://api.groq.com/openai/v1}
       Llm__Fallback__ApiKey: ${LLM_FALLBACK_API_KEY:-}
       Llm__Fallback__Model: ${LLM_FALLBACK_MODEL:-}
+      Embeddings__BaseUrl: ${EMBEDDINGS_BASE_URL:-}
+      Embeddings__ApiKey: ${EMBEDDINGS_API_KEY:-}
+      Embeddings__Model: ${EMBEDDINGS_MODEL:-}
+      Embeddings__Dimensions: ${EMBEDDINGS_DIMENSIONS:-768}
+      Knowledge__AutoIngest: ${KNOWLEDGE_AUTO_INGEST:-true}
+      Knowledge__MinSemanticSimilarity: ${KNOWLEDGE_MIN_SEMANTIC_SIMILARITY:-0.60}
+      Knowledge__MinLexicalRank: ${KNOWLEDGE_MIN_LEXICAL_RANK:-0.05}
       Admin__Key: ${ADMIN_KEY:-}
       Admin__MaskPhones: ${ADMIN_MASK_PHONES:-true}
       Agent__MaxOutputTokens: ${AGENT_MAX_OUTPUT_TOKENS:-800}

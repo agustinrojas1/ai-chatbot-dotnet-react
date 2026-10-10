@@ -1,6 +1,7 @@
 using System.Globalization;
 using Chatbot.Evals.Cases;
 using Chatbot.Evals.Checking;
+using Chatbot.Evals.Retrieval;
 
 namespace Chatbot.Evals.Reporting;
 
@@ -50,6 +51,47 @@ internal static class ConsoleReport
                 t.Met ? "MET" : "NOT MET",
             }).ToList());
     }
+
+    /// <summary>The table of a retrieval run: misses, recall and MRR overall and by language pair, the threshold figures and the targets.</summary>
+    public static void WriteRetrieval(TextWriter output, RetrievalSummary summary)
+    {
+        output.WriteLine($"Questions: {summary.Results.Count} ({summary.AnswerableCount} answerable, {summary.Unanswerable.Count} unanswerable, {summary.NotRun.Count} not run)");
+
+        if (summary.Misses.Count > 0)
+        {
+            output.WriteLine();
+            output.WriteLine("Misses (expected document not in the top 4)");
+            WriteTable(output, ["Question", "Niche", "Expected", "Top 4 documents"],
+                summary.Misses.Select(r => new[]
+                {
+                    r.Case.Id, CaseLoader.Name(r.Case.Niche), string.Join(", ", r.Case.ExpectSources), string.Join(", ", r.DocumentRanking),
+                }).ToList());
+        }
+
+        output.WriteLine();
+        output.WriteLine("Recall@4 and MRR");
+        WriteTable(output, ["Group", "Questions", "Recall@4", "MRR"],
+            [.. summary.ByPair.Append(summary.Overall).Select(m => new[] { m.Name, m.Questions.ToString(CultureInfo.InvariantCulture), Fixed(m.RecallAt4), Fixed(m.Mrr) })]);
+
+        output.WriteLine();
+        output.WriteLine("Relevance threshold (informational)");
+        output.WriteLine($"  unanswerable: thresholdPassed=false for {summary.UnanswerableBelowThreshold}/{summary.Unanswerable.Count} (the search said 'nothing relevant')");
+        output.WriteLine($"  answerable:   thresholdPassed=true  for {summary.AnswerableAboveThreshold}/{summary.AnswerableCount}");
+        output.WriteLine($"  query embedding tokens: {summary.EmbeddingTokens:N0}");
+
+        if (summary.NotRun.Count > 0)
+        {
+            output.WriteLine();
+            output.WriteLine($"NOT RUN: {summary.NotRun.Count} question(s) could not be searched (embeddings provider) and are left out of every metric: {summary.NotRun[0].Error}");
+        }
+
+        output.WriteLine();
+        output.WriteLine("Retrieval targets");
+        WriteTable(output, ["Target", "Required", "Actual", "Result"],
+            [.. summary.Targets.Select(t => new[] { t.Name, $">= {Fixed(t.Required)}", Fixed(t.Actual), t.Met ? "MET" : "NOT MET" })]);
+    }
+
+    public static string Fixed(double value) => value.ToString("0.000", CultureInfo.InvariantCulture);
 
     private static string Reasons(CaseResult result)
     {

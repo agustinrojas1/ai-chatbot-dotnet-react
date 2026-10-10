@@ -138,8 +138,8 @@ public class BookingToolsTests(PostgresFixture postgres)
         await using var real = await world.NewSessionAsync(world.A);
         // Same session, but its context fails when saving: the seat was already taken inside the transaction.
         await using var db = new ChatbotDbContext(new DbContextOptionsBuilder<ChatbotDbContext>()
-            .UseNpgsql(world.ConnectionString).AddInterceptors(new FailingSave()).Options);
-        var failing = new Session(db, real.Context, AgentToolFactory.Create(db, real.Context, ToolWorld.Clock));
+            .UseChatbotNpgsql(world.ConnectionString).AddInterceptors(new FailingSave()).Options);
+        var failing = new Session(db, real.Context, AgentToolFactory.Create(db, real.Context, ToolWorld.Clock, world.NewKnowledge(db)));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => failing.CallAsync(AgentToolFactory.CreateBooking, SlotBooking(slot.Id)));
 
@@ -217,7 +217,7 @@ public class BookingToolsTests(PostgresFixture postgres)
         var slot = await world.AddSlotAsync(world.A, Local(19, 10));
         await using var db = world.NewDb();
         var context = new ToolContext(world.A.Id, Guid.CreateVersion7(), world.A.Timezone);
-        var orphan = new Session(db, context, AgentToolFactory.Create(db, context, ToolWorld.Clock));
+        var orphan = new Session(db, context, AgentToolFactory.Create(db, context, ToolWorld.Clock, world.NewKnowledge(db)));
 
         var result = await orphan.CallAsync(AgentToolFactory.CreateBooking, SlotBooking(slot.Id));
 

@@ -4,6 +4,7 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Seeding\Personas\*.md" LogicalName="Personas.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Seeding\knowledge\**\*.md" LogicalName="knowledge/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
@@ -16,5 +17,6 @@
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.10.1" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
   </ItemGroup>
 </Project>

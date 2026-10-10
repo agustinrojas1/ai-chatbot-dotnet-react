@@ -1,8 +1,12 @@
 using System.Diagnostics;
 using Chatbot.Evals.Cases;
 using Chatbot.Evals.Reporting;
+using Chatbot.Evals.Retrieval;
 using Chatbot.Evals.Running;
+using Chatbot.Infrastructure.Knowledge;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Chatbot.Evals;
 
@@ -59,14 +63,26 @@ internal static class EvalProgram
         }
 
         var casesDirectory = options.CasesDirectory ?? FindCasesDirectory();
+        if (options.Retrieval)
+            return await RunRetrievalAsync(options, casesDirectory, ct);
+
         var cases = options.Select(CaseLoader.LoadDirectory(casesDirectory));
         if (cases.Count == 0)
             throw new UsageException("No case matches the filters.");
 
         var configuredConnection = Environment.GetEnvironmentVariable("ConnectionStrings__Postgres");
-        if (!options.Fake && MissingModelSettings(EvalConfiguration.Build(configuredConnection ?? "", options.Model)) is { } missing)
+        var probe = EvalConfiguration.Build(configuredConnection ?? "", options.Model);
+        if (!options.Fake && MissingModelSettings(probe) is { } missing)
         {
             Console.Error.WriteLine($"No model is configured: {missing} is empty. Set Llm__Primary__ApiKey and Llm__Primary__Model (or LLM_PRIMARY_API_KEY and LLM_PRIMARY_MODEL), or run with --fake.");
+            return CouldNotRun;
+        }
+
+        // The knowledge base is only indexed (and so only needs the embeddings) when a selected case searches it.
+        var needsKnowledge = cases.Any(c => c.Category is EvalCategory.RagAnswer or EvalCategory.RagUnanswerable or EvalCategory.RagMixed or EvalCategory.RagInjection);
+        if (needsKnowledge && !options.Fake && MissingEmbeddingSettings(probe) is { } missingEmbeddings)
+        {
+            Console.Error.WriteLine($"The selected cases search the knowledge base but {missingEmbeddings} is empty. Set Embeddings__ApiKey (or EMBEDDINGS_API_KEY; it defaults to Llm__Primary__ApiKey), or run with --fake.");
             return CouldNotRun;
         }
 
@@ -74,10 +90,13 @@ internal static class EvalProgram
         Console.WriteLine(configuredConnection is null ? "Starting a PostgreSQL container..." : "Using ConnectionStrings__Postgres.");
 
         await using var database = await EvalDatabase.StartAsync(configuredConnection, ct);
-        var configuration = EvalConfiguration.Build(database.ConnectionString, options.Model);
+        var configuration = EvalConfiguration.Build(database.ConnectionString, options.Model, fakeEmbeddings: options.Fake);
         var policy = options.Fake ? null : new ModelCallPolicy(TimeSpan.FromMilliseconds(options.MinIntervalMs), Notice: Console.WriteLine);
-        await using var services = EvalHost.Build(configuration, options.Fake ? new FakeChatClient() : null, policy);
+        await using var services = EvalHost.Build(
+            configuration, options.Fake ? new FakeChatClient() : null, policy, options.Fake ? new FakeEmbeddingGenerator() : null);
         await EvalHost.PrepareDatabaseAsync(services, ct);
+        if (needsKnowledge)
+            PrintIngestion(await EvalHost.IngestKnowledgeAsync(services, ct));
 
         var clock = Stopwatch.StartNew();
         var startedAt = DateTimeOffset.Now;
@@ -85,15 +104,12 @@ internal static class EvalProgram
             Console.WriteLine($"[{done}/{total}] {result.Transcript.Case.Id} {(result.NotRun ? "NOT RUN" : result.Passed ? "PASS" : "FAIL")}"), ct);
 
         var summary = EvalSummary.Create(results);
-        var info = new RunInfo(
-            startedAt, clock.Elapsed, options.Fake, options.Repeat, options.Filter,
-            options.Category is { } category ? CaseLoader.Name(category) : null,
-            options.Niche is { } niche ? CaseLoader.Name(niche) : null);
+        var info = NewRunInfo(options, startedAt, clock.Elapsed);
 
         Console.WriteLine();
         ConsoleReport.Write(Console.Out, summary);
 
-        var report = WriteReport(options.ResultsDirectory ?? Path.Combine(Path.GetDirectoryName(casesDirectory)!, "results"), summary, info);
+        var report = WriteReport(ResultsDirectory(options, casesDirectory), MarkdownReport.FileName(info.StartedAt), MarkdownReport.Render(summary, info));
         Console.WriteLine();
         Console.WriteLine($"Report: {report}");
 
@@ -106,20 +122,99 @@ internal static class EvalProgram
             return Incomplete;
         }
 
-        Console.WriteLine($"MVP targets (100% language, 100% forbidden phrases, >= 90% tool use) not met: {string.Join("; ", summary.Targets.Where(t => !t.Met).Select(t => t.Name))}.");
+        Console.WriteLine($"Targets not met: {string.Join("; ", summary.Targets.Where(t => !t.Met).Select(t => t.Name))}. (MVP: 100% language, 100% forbidden phrases, >= 90% tool use. M8: 100% unanswerable and injection cases.)");
         return TargetsMissed;
     }
 
-    private static string WriteReport(string directory, EvalSummary summary, RunInfo info)
+    /// <summary>
+    /// <c>--retrieval</c>: indexes the knowledge base with the real embeddings (or the fake ones) and measures the search alone.
+    /// No chat model is involved, so no <c>Llm</c> key is needed.
+    /// </summary>
+    private static async Task<int> RunRetrievalAsync(EvalOptions options, string casesDirectory, CancellationToken ct)
+    {
+        var questions = RetrievalCaseLoader.LoadDirectory(casesDirectory)
+            .Where(q => options.Filter is null || q.Id.Contains(options.Filter, StringComparison.OrdinalIgnoreCase))
+            .Where(q => options.Niche is null || q.Niche == options.Niche)
+            .ToList();
+        if (questions.Count == 0)
+            throw new UsageException("No retrieval question matches the filters.");
+
+        var configuredConnection = Environment.GetEnvironmentVariable("ConnectionStrings__Postgres");
+        if (!options.Fake && MissingEmbeddingSettings(EvalConfiguration.Build(configuredConnection ?? "")) is { } missing)
+        {
+            Console.Error.WriteLine($"No embeddings are configured: {missing} is empty. Set Embeddings__ApiKey (or EMBEDDINGS_API_KEY; it defaults to Llm__Primary__ApiKey), or run with --fake.");
+            return CouldNotRun;
+        }
+
+        Console.WriteLine($"{questions.Count} retrieval question(s) from {casesDirectory}. {(options.Fake ? "Embeddings: deterministic fake." : "Embeddings: real.")}");
+        Console.WriteLine(configuredConnection is null ? "Starting a PostgreSQL container..." : "Using ConnectionStrings__Postgres.");
+
+        await using var database = await EvalDatabase.StartAsync(configuredConnection, ct);
+        var configuration = EvalConfiguration.Build(database.ConnectionString, fakeEmbeddings: options.Fake);
+        await using var services = EvalHost.Build(configuration, new FakeChatClient(), null, options.Fake ? new FakeEmbeddingGenerator() : null);
+        await EvalHost.PrepareDatabaseAsync(services, ct);
+        PrintIngestion(await EvalHost.IngestKnowledgeAsync(services, ct));
+
+        var clock = Stopwatch.StartNew();
+        var startedAt = DateTimeOffset.Now;
+        var results = await RetrievalRunner.RunAsync(services, questions, (result, done, total) =>
+            Console.WriteLine($"[{done}/{total}] {result.Case.Id} {(result.NotRun ? "NOT RUN" : result.Case.Unanswerable ? (result.ThresholdPassed ? "passed threshold" : "below threshold") : result.Rank is { } rank ? $"rank {rank}" : "MISS")}"), ct);
+
+        var summary = new RetrievalSummary(results);
+        var info = NewRunInfo(options, startedAt, clock.Elapsed);
+        var embeddingModel = services.GetRequiredService<IOptions<EmbeddingOptions>>().Value.Model;
+
+        Console.WriteLine();
+        ConsoleReport.WriteRetrieval(Console.Out, summary);
+
+        var name = Path.ChangeExtension(MarkdownReport.FileName(info.StartedAt), null) + "-retrieval.md";
+        var report = WriteReport(ResultsDirectory(options, casesDirectory), name, MarkdownReport.RenderRetrieval(summary, info, embeddingModel));
+        Console.WriteLine();
+        Console.WriteLine($"Report: {report}");
+
+        if (summary.TargetsMet && summary.NotRun.Count == 0)
+            return 0;
+
+        if (summary.TargetsMet)
+        {
+            Console.WriteLine($"Incomplete: {summary.NotRun.Count} question(s) could not be searched (embeddings provider) and are not in the metrics.");
+            return Incomplete;
+        }
+
+        Console.WriteLine($"Retrieval targets not met: {string.Join("; ", summary.Targets.Where(t => !t.Met).Select(t => t.Name))} (recall@4 >= {RetrievalSummary.RecallTarget}, MRR >= {RetrievalSummary.MrrTarget}).");
+        return TargetsMissed;
+    }
+
+    private static void PrintIngestion(IngestionReport report) =>
+        Console.WriteLine($"Knowledge base: {report.Documents} documents ({report.Processed} indexed, {report.Skipped} unchanged), {report.Chunks} chunks, {report.EmbeddingTokens:N0} embedding tokens{(report.TokensEstimated ? " (estimated)" : "")}, ${report.CostUsd.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)}.");
+
+    private static RunInfo NewRunInfo(EvalOptions options, DateTimeOffset startedAt, TimeSpan duration) => new(
+        startedAt, duration, options.Fake, options.Repeat, options.Filter,
+        options.Category is { } category ? CaseLoader.Name(category) : null,
+        options.Niche is { } niche ? CaseLoader.Name(niche) : null);
+
+    private static string ResultsDirectory(EvalOptions options, string casesDirectory) =>
+        options.ResultsDirectory ?? Path.Combine(Path.GetDirectoryName(casesDirectory)!, "results");
+
+    private static string WriteReport(string directory, string name, string content)
     {
         Directory.CreateDirectory(directory);
-        var name = MarkdownReport.FileName(info.StartedAt);
         var path = Path.Combine(directory, name);
         for (var attempt = 2; File.Exists(path); attempt++)
             path = Path.Combine(directory, Path.ChangeExtension(name, null) + $"-{attempt}.md");
 
-        File.WriteAllText(path, MarkdownReport.Render(summary, info));
+        File.WriteAllText(path, content);
         return path;
+    }
+
+    /// <summary>The first embeddings setting that is missing (they default to the primary LLM provider), or null.</summary>
+    private static string? MissingEmbeddingSettings(IConfiguration configuration)
+    {
+        if (string.IsNullOrWhiteSpace(configuration["Embeddings:ApiKey"]) && string.IsNullOrWhiteSpace(configuration["Llm:Primary:ApiKey"]))
+            return "Embeddings:ApiKey";
+        if (string.IsNullOrWhiteSpace(configuration["Embeddings:BaseUrl"]) && string.IsNullOrWhiteSpace(configuration["Llm:Primary:BaseUrl"]))
+            return "Embeddings:BaseUrl";
+        return null;
     }
 
     /// <summary>The first of the primary provider settings that is missing, or null.</summary>
