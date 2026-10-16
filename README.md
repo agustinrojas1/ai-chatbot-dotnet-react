@@ -8,7 +8,7 @@
 ![PostgreSQL + pgvector](https://img.shields.io/badge/PostgreSQL_17-pgvector-4169E1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-> **Live demo:** pending (hosting not decided yet). **Demo GIF:** pending.
+> **Live demo:** [booking-agent-demo.vercel.app](https://booking-agent-demo.vercel.app) (free hosting: the first answer after a quiet spell can take a few seconds). **Demo GIF:** pending.
 
 The visitor picks one of three demo businesses, each with its own persona, catalog, knowledge base and rules:
 
@@ -369,7 +369,7 @@ The settings are in `.env.example`. In Docker, the local server must listen on `
 - **Demo-grade admin.** One shared key, not an authentication system. The demo is not meant for real personal data: a typed name stays in the stored messages.
 - **Free-tier hosting.** The API runs on 0.1 CPU and wakes Neon on the first query after 5 idle minutes, so some answers start slower (ADR-019).
 
-Next steps: deploy the demo and record the GIF, run the full eval suite on the English corpus with Gemini, investigate the empty tool arguments, add an LLM judge for faithfulness, and a shared store for the per-IP limiter.
+Next steps: record the demo GIF, run the full eval suite on the English corpus with Gemini, investigate the empty tool arguments, add an LLM judge for faithfulness, and a shared store for the per-IP limiter.
 
 Day-by-day progress and pending items are in [docs/progress.md](docs/progress.md).
 
