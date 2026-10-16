@@ -25,7 +25,7 @@ internal sealed class CatalogTools(ChatbotDbContext db, ToolContext context)
         [Description("Optional kind: Property, Treatment or MenuItem.")]
         string? kind = null,
         [Description("Attribute filters as an object, e.g. {\"neighborhood\":\"Palermo\",\"rooms\":2} or {\"glutenFree\":true} or {\"features\":\"balcony\"}. " +
-                     "Keys and string values are matched exactly (case-sensitive); use numbers and booleans for numeric and boolean attributes. " +
+                     "Keys and string values are matched ignoring case; use numbers and booleans for numeric and boolean attributes. " +
                      "A list attribute matches when it contains the value.")]
         Dictionary<string, JsonElement>? filters = null,
         CancellationToken cancellationToken = default)
@@ -67,10 +67,12 @@ internal sealed class CatalogTools(ChatbotDbContext db, ToolContext context)
                 if (!TryBuildContainment(key, value, out var asGiven, out var asListItem, out var problem))
                     return ToolSupport.Error("invalid_filter", problem);
 
-                // jsonb containment (@>, served by the GIN index). The same value is also tried as an element
-                // of a list attribute, so {"features":"balcony"} matches {"features":["balcony","pool"]}.
+                // jsonb containment (@>, served by the GIN index) against the lowercased copy of the attributes, so
+                // case is ignored. The same value is also tried as an element of a list attribute, so
+                // {"features":"balcony"} matches {"features":["balcony","pool"]}.
                 offerings = offerings.Where(o =>
-                    EF.Functions.JsonContains(o.Attributes, asGiven) || EF.Functions.JsonContains(o.Attributes, asListItem));
+                    EF.Functions.JsonContains(EF.Property<JsonElement>(o, OfferingConfiguration.LowercaseAttributes), asGiven)
+                    || EF.Functions.JsonContains(EF.Property<JsonElement>(o, OfferingConfiguration.LowercaseAttributes), asListItem));
             }
         }
 
@@ -95,7 +97,7 @@ internal sealed class CatalogTools(ChatbotDbContext db, ToolContext context)
             shown = found.Count,
             results,
             note = found.Count == 0
-                ? "No active offering matches. Filter keys and string values are exact; retry with fewer filters or without them to see the attribute keys."
+                ? "No active offering matches. Filter keys and values must match the attributes (case is ignored); retry with fewer filters or without them to see the attribute keys."
                 : total > found.Count ? $"Showing the {found.Count} cheapest of {total} matches; narrow the search to see others." : null,
         };
     }
@@ -139,7 +141,10 @@ internal sealed class CatalogTools(ChatbotDbContext db, ToolContext context)
     private static string EscapeLike(string term) =>
         term.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
-    /// <summary>Builds <c>{"key": value}</c> and <c>{"key": [value]}</c> for a scalar value (a list value is used as is).</summary>
+    /// <summary>
+    /// Builds <c>{"key": value}</c> and <c>{"key": [value]}</c> for a scalar value (a list value is used as is), with the key
+    /// and string values lowercased to match <see cref="OfferingConfiguration.LowercaseAttributes"/>.
+    /// </summary>
     private static bool TryBuildContainment(string key, JsonElement value, out string asGiven, out string asListItem, out string problem)
     {
         asGiven = asListItem = problem = "";
@@ -158,10 +163,23 @@ internal sealed class CatalogTools(ChatbotDbContext db, ToolContext context)
             return false;
         }
 
+        key = key.ToLowerInvariant();
+        value = Lowercase(value);
         asGiven = JsonSerializer.Serialize(new Dictionary<string, JsonElement> { [key] = value });
         asListItem = scalar
             ? JsonSerializer.Serialize(new Dictionary<string, JsonElement[]> { [key] = [value] })
             : asGiven;
         return true;
     }
+
+    /// <summary>
+    /// Lowercases strings, also inside a list. Done before serializing, not on the JSON text: the serializer writes "Ú" as
+    /// \u00DA, and lowercasing that escape would leave the letter uppercase.
+    /// </summary>
+    private static JsonElement Lowercase(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => JsonSerializer.SerializeToElement(value.GetString()!.ToLowerInvariant()),
+        JsonValueKind.Array => JsonSerializer.SerializeToElement(value.EnumerateArray().Select(Lowercase).ToArray()),
+        _ => value,
+    };
 }
