@@ -17,6 +17,13 @@ public class FallbackChatClientTests
         new(new LlmEndpoint(primary, "gemini", "gemini-model"),
             fallback is null ? null : new LlmEndpoint(fallback, "groq", "groq-model"));
 
+    private static FallbackChatClient Build(FakeChatClient primary, FakeChatClient? fallback, TimeSpan firstUpdateTimeout) =>
+        new(new LlmEndpoint(primary, "gemini", "gemini-model"),
+            fallback is null ? null : new LlmEndpoint(fallback, "groq", "groq-model"),
+            firstUpdateTimeout: firstUpdateTimeout);
+
+    private static readonly TimeSpan ShortLimit = TimeSpan.FromMilliseconds(150);
+
     // The OpenAI SDK is the real source of errors in production, so use its exception instead of inventing one.
     private static async Task<Exception> SdkError(HttpStatusCode status, bool stream = false)
     {
@@ -420,6 +427,119 @@ public class FallbackChatClientTests
     }
 
     [Fact]
+    public async Task Streaming_primary_that_never_produces_a_first_update_is_cancelled_and_the_fallback_answers()
+    {
+        CancellationToken primaryToken = default;
+        var primary = new FakeChatClient { CancellableStream = ct => { primaryToken = ct; return Hangs(ct); } };
+        var fallback = new FakeChatClient { Stream = _ => Updates("from ", "fallback") };
+
+        var updates = await Collect(Build(primary, fallback, ShortLimit).GetStreamingResponseAsync(Messages));
+
+        Assert.Equal("from fallback", string.Concat(updates.Select(u => u.Text)));
+        Assert.All(updates, u => Assert.Equal("groq", u.AdditionalProperties![FallbackChatClient.ProviderKey]));
+        Assert.True(primaryToken.IsCancellationRequested);
+        Assert.Equal(1, primary.Calls);
+        Assert.Equal(1, fallback.Calls);
+    }
+
+    [Fact]
+    public async Task Streaming_primary_that_is_slow_after_the_first_update_is_not_cut_off()
+    {
+        var primary = new FakeChatClient { CancellableStream = ct => SlowAfterFirst(TimeSpan.FromMilliseconds(500), ct, "Hel", "lo") };
+        var fallback = new FakeChatClient { Stream = _ => Updates("should not be used") };
+
+        var updates = await Collect(Build(primary, fallback, ShortLimit).GetStreamingResponseAsync(Messages));
+
+        Assert.Equal("Hello", string.Concat(updates.Select(u => u.Text)));
+        Assert.All(updates, u => Assert.Equal("gemini", u.AdditionalProperties![FallbackChatClient.ProviderKey]));
+        Assert.Equal(0, fallback.Calls);
+    }
+
+    [Fact]
+    public async Task Streaming_failure_after_a_first_update_that_beat_the_limit_still_propagates_without_fallback()
+    {
+        var primary = new FakeChatClient { Stream = _ => UpdatesThenFail(new HttpRequestException("503", null, HttpStatusCode.ServiceUnavailable), "partial") };
+        var fallback = new FakeChatClient { Stream = _ => Updates("should not be used") };
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => Collect(Build(primary, fallback, ShortLimit).GetStreamingResponseAsync(Messages)));
+
+        Assert.Equal(0, fallback.Calls);
+    }
+
+    [Fact]
+    public async Task Streaming_without_a_fallback_the_primary_is_not_cut_off()
+    {
+        var primary = new FakeChatClient { CancellableStream = ct => SlowAfterFirst(TimeSpan.Zero, ct, "late", delayBeforeFirst: TimeSpan.FromMilliseconds(400)) };
+
+        var updates = await Collect(Build(primary, null, ShortLimit).GetStreamingResponseAsync(Messages));
+
+        Assert.Equal("late", updates.Single().Text);
+    }
+
+    [Fact]
+    public async Task Streaming_fallback_has_no_time_limit()
+    {
+        var primary = new FakeChatClient { Stream = _ => FailsImmediately(new HttpRequestException("429", null, HttpStatusCode.TooManyRequests)) };
+        var fallback = new FakeChatClient { CancellableStream = ct => SlowAfterFirst(TimeSpan.Zero, ct, "slow but ok", delayBeforeFirst: TimeSpan.FromMilliseconds(400)) };
+
+        var updates = await Collect(Build(primary, fallback, ShortLimit).GetStreamingResponseAsync(Messages));
+
+        Assert.Equal("slow but ok", updates.Single().Text);
+    }
+
+    [Fact]
+    public async Task Streaming_slow_primary_and_failing_fallback_propagates_the_fallback_error()
+    {
+        var primary = new FakeChatClient { CancellableStream = Hangs };
+        var fallback = new FakeChatClient { Stream = _ => FailsImmediately(new HttpRequestException("b", null, HttpStatusCode.BadGateway)) };
+
+        var thrown = await Assert.ThrowsAsync<HttpRequestException>(() => Collect(Build(primary, fallback, ShortLimit).GetStreamingResponseAsync(Messages)));
+
+        Assert.Equal("b", thrown.Message);
+    }
+
+    [Fact]
+    public async Task Streaming_caller_cancellation_is_not_mistaken_for_the_time_limit()
+    {
+        var primary = new FakeChatClient { CancellableStream = Hangs };
+        var fallback = new FakeChatClient { Stream = _ => Updates("should not be used") };
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(30));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => Collect(Build(primary, fallback, TimeSpan.FromSeconds(30)).GetStreamingResponseAsync(Messages, cancellationToken: cts.Token)));
+
+        Assert.Equal(0, fallback.Calls);
+    }
+
+    [Fact]
+    public async Task Streaming_a_zero_timeout_means_no_limit()
+    {
+        var primary = new FakeChatClient { CancellableStream = ct => SlowAfterFirst(TimeSpan.Zero, ct, "ok", delayBeforeFirst: TimeSpan.FromMilliseconds(200)) };
+        var fallback = new FakeChatClient();
+
+        var updates = await Collect(Build(primary, fallback, TimeSpan.Zero).GetStreamingResponseAsync(Messages));
+
+        Assert.Equal("ok", updates.Single().Text);
+        Assert.Equal(0, fallback.Calls);
+    }
+
+    [Fact]
+    public void FirstUpdateTimeoutException_is_a_reason_to_fall_back_and_names_the_provider()
+    {
+        var error = new FirstUpdateTimeoutException(new LlmEndpoint(new FakeChatClient(), "gemini", "gemini-model"), TimeSpan.FromSeconds(12), new OperationCanceledException());
+
+        Assert.Contains("gemini", error.Message);
+        Assert.Contains("12 s", error.Message);
+        Assert.IsAssignableFrom<TimeoutException>(error);
+    }
+
+    [Fact]
+    public void The_default_first_token_timeout_is_12_seconds()
+    {
+        Assert.Equal(12, new LlmOptions().FirstTokenTimeoutSeconds);
+    }
+
+    [Fact]
     public void GetService_returns_itself_or_asks_the_primary_and_Dispose_disposes_both()
     {
         var primary = new FakeChatClient();
@@ -467,6 +587,25 @@ public class FallbackChatClientTests
         throw error;
     }
 
+    // A stream that produces nothing until it is cancelled (what a stalled HTTP request does with the SDK's token).
+    private static async IAsyncEnumerable<ChatResponseUpdate> Hangs([EnumeratorCancellation] CancellationToken ct)
+    {
+        await Task.Delay(Timeout.Infinite, ct);
+        yield break;
+    }
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> SlowAfterFirst(
+        TimeSpan gap, [EnumeratorCancellation] CancellationToken ct, string first, string? second = null, TimeSpan? delayBeforeFirst = null)
+    {
+        await Task.Delay(delayBeforeFirst ?? TimeSpan.Zero, ct);
+        yield return new ChatResponseUpdate(ChatRole.Assistant, first);
+        if (second is not null)
+        {
+            await Task.Delay(gap, ct);
+            yield return new ChatResponseUpdate(ChatRole.Assistant, second);
+        }
+    }
+
     private static async IAsyncEnumerable<ChatResponseUpdate> FailsImmediately(Exception error)
     {
         await Task.Yield();
@@ -480,6 +619,9 @@ public class FallbackChatClientTests
     {
         public Func<IEnumerable<ChatMessage>, Task<ChatResponse>> Response { get; set; } = _ => throw new InvalidOperationException("unexpected call");
         public Func<IEnumerable<ChatMessage>, IAsyncEnumerable<ChatResponseUpdate>> Stream { get; set; } = _ => throw new InvalidOperationException("unexpected call");
+
+        /// <summary>When set, used instead of <see cref="Stream"/> and given the token the client was called with.</summary>
+        public Func<CancellationToken, IAsyncEnumerable<ChatResponseUpdate>>? CancellableStream { get; set; }
         public int Calls { get; private set; }
         public ChatOptions? LastOptions { get; private set; }
         public bool Disposed { get; private set; }
@@ -496,7 +638,7 @@ public class FallbackChatClientTests
         {
             Calls++;
             LastOptions = options;
-            return Stream(messages);
+            return CancellableStream is { } cancellable ? cancellable(cancellationToken) : Stream(messages);
         }
 
         public object? GetService(Type serviceType, object? serviceKey = null) =>

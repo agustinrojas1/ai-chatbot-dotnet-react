@@ -6,16 +6,22 @@ using Microsoft.Extensions.Logging;
 
 namespace Chatbot.Infrastructure.Llm;
 
+/// <summary>The provider did not produce its first streaming update within the configured limit and was cancelled.</summary>
+public sealed class FirstUpdateTimeoutException(LlmEndpoint endpoint, TimeSpan limit, Exception inner)
+    : TimeoutException($"LLM provider {endpoint.Provider} ({endpoint.Model}) produced no output within {limit.TotalSeconds:0.#} s", inner);
+
 /// <summary>One LLM provider: the client plus the labels reported in the trace.</summary>
 public sealed record LlmEndpoint(IChatClient Client, string Provider, string Model);
 
 /// <summary>
 /// Calls the primary provider and, if it answers 429 or 5xx before producing anything, retries once with the fallback
-/// (SPEC 8). A response the SDK cannot parse because of an unknown finish reason is first repeated once on the same
+/// (SPEC 8). In streaming, a primary that has not produced its first update within <c>firstUpdateTimeout</c> is cancelled
+/// and counts as failed too (<see cref="FirstUpdateTimeoutException"/>); the fallback itself has no such limit. A response the SDK cannot parse because of an unknown finish reason is first repeated once on the same
 /// provider (<see cref="IsUnknownFinishReason"/>). The provider that answered is reported in
 /// <c>AdditionalProperties["llm.provider"]</c> and <c>["llm.model"]</c>.
 /// </summary>
-public sealed class FallbackChatClient(LlmEndpoint primary, LlmEndpoint? fallback, ILogger<FallbackChatClient>? logger = null) : IChatClient
+public sealed class FallbackChatClient(
+    LlmEndpoint primary, LlmEndpoint? fallback, ILogger<FallbackChatClient>? logger = null, TimeSpan? firstUpdateTimeout = null) : IChatClient
 {
     public const string ProviderKey = "llm.provider";
     public const string ModelKey = "llm.model";
@@ -48,20 +54,24 @@ public sealed class FallbackChatClient(LlmEndpoint primary, LlmEndpoint? fallbac
         var history = messages as IReadOnlyList<ChatMessage> ?? messages.ToList();
 
         // The fallback is only allowed while nothing has been yielded, so pull the first update before deciding.
+        // The time limit applies to the primary only, and only if there is something to fall back to.
         var used = primary;
         IAsyncEnumerator<ChatResponseUpdate> updates;
         bool hasUpdate;
+        CancellationTokenSource streamCts;
         try
         {
-            (updates, hasUpdate) = await OpenStreamAsync(primary, history, options, cancellationToken);
+            (updates, hasUpdate, streamCts) = await OpenStreamAsync(
+                primary, history, options, fallback is null || firstUpdateTimeout is not { } limit || limit <= TimeSpan.Zero ? null : limit, cancellationToken);
         }
         catch (Exception ex) when (fallback is not null && ShouldFallBack(ex))
         {
             LogFallback(ex);
             used = fallback;
-            (updates, hasUpdate) = await OpenStreamAsync(fallback, history, options, cancellationToken);
+            (updates, hasUpdate, streamCts) = await OpenStreamAsync(fallback, history, options, null, cancellationToken);
         }
 
+        using (streamCts)
         await using (updates)
         {
             // From here on errors propagate: the caller has already received part of the answer.
@@ -108,7 +118,8 @@ public sealed class FallbackChatClient(LlmEndpoint primary, LlmEndpoint? fallbac
         ex is ArgumentOutOfRangeException && ex.Message.Contains("ChatFinishReason", StringComparison.Ordinal);
 
     // Another provider can help with a rate limit or an outage (IsRetryable) and with a model hiccup (IsUnknownFinishReason).
-    private static bool ShouldFallBack(Exception ex) => IsRetryable(ex) || IsUnknownFinishReason(ex);
+    // A primary that is too slow to start answering (FirstUpdateTimeoutException) is as good as an outage.
+    private static bool ShouldFallBack(Exception ex) => IsRetryable(ex) || IsUnknownFinishReason(ex) || ex is FirstUpdateTimeoutException;
 
     // One call on one endpoint. An unknown finish reason is repeated once on the same endpoint before giving up on it.
     private async Task<ChatResponse> CompleteAsync(
@@ -126,21 +137,38 @@ public sealed class FallbackChatClient(LlmEndpoint primary, LlmEndpoint? fallbac
     }
 
     // Starts a stream and pulls its first update, with the same unknown-finish-reason retry. It never yields, so a retry
-    // can only happen while the caller has received nothing.
-    private async Task<(IAsyncEnumerator<ChatResponseUpdate> Updates, bool HasUpdate)> OpenStreamAsync(
-        LlmEndpoint endpoint, IReadOnlyList<ChatMessage> history, ChatOptions? options, CancellationToken cancellationToken)
+    // can only happen while the caller has received nothing. With a timeout, each attempt gets that long to produce its
+    // first update; the token stays linked to the stream, so the timer is switched off (not the source) once it arrives.
+    // The returned source belongs to the caller, who disposes it after the stream.
+    private async Task<(IAsyncEnumerator<ChatResponseUpdate> Updates, bool HasUpdate, CancellationTokenSource Cts)> OpenStreamAsync(
+        LlmEndpoint endpoint, IReadOnlyList<ChatMessage> history, ChatOptions? options, TimeSpan? timeout, CancellationToken cancellationToken)
     {
         for (bool retried = false; ; retried = true)
         {
-            var updates = endpoint.Client.GetStreamingResponseAsync(history, WithModel(options, endpoint), cancellationToken)
-                .GetAsyncEnumerator(cancellationToken);
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (timeout is { } limit)
+            {
+                cts.CancelAfter(limit);
+            }
+
+            var updates = endpoint.Client.GetStreamingResponseAsync(history, WithModel(options, endpoint), cts.Token)
+                .GetAsyncEnumerator(cts.Token);
             try
             {
-                return (updates, await updates.MoveNextAsync());
+                var hasUpdate = await updates.MoveNextAsync();
+                cts.CancelAfter(Timeout.InfiniteTimeSpan);
+                return (updates, hasUpdate, cts);
             }
             catch (Exception ex)
             {
                 await updates.DisposeAsync();
+                var timedOut = timeout is not null && cts.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
+                cts.Dispose();
+                if (timedOut)
+                {
+                    throw new FirstUpdateTimeoutException(endpoint, timeout!.Value, ex);
+                }
+
                 if (retried || !IsUnknownFinishReason(ex))
                 {
                     throw;
