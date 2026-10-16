@@ -363,6 +363,11 @@ namespace Chatbot.Infrastructure.Persistence.Migrations
                     b.Property<JsonElement>("Attributes")
                         .HasColumnType("jsonb");
 
+                    b.Property<JsonElement>("AttributesLower")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("jsonb")
+                        .HasComputedColumnSql("lower(\"Attributes\"::text)::jsonb", true);
+
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -394,9 +399,9 @@ namespace Chatbot.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Attributes");
+                    b.HasIndex("AttributesLower");
 
-                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Attributes"), "gin");
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("AttributesLower"), "gin");
 
                     b.HasIndex("BusinessId");
 

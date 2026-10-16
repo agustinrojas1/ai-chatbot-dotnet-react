@@ -108,15 +108,69 @@ public class CatalogToolsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Search_StringFilters_IgnoreCaseOfKeysAndValues()
+    {
+        var world = await ToolWorld.CreateAsync(postgres);
+        await using var session = await world.NewSessionAsync(world.A);
+
+        var scalar = await session.CallAsync(AgentToolFactory.SearchCatalog, """{"filters":{"Neighborhood":"PALERMO","rooms":2}}""");
+        var listItem = await session.CallAsync(AgentToolFactory.SearchCatalog, """{"filters":{"features":"Balcony"}}""");
+        var list = await session.CallAsync(AgentToolFactory.SearchCatalog, """{"filters":{"FEATURES":["BALCONY","Low HOA Fees"]}}""");
+
+        Assert.Equal(["2-room apartment in Palermo"], Names(scalar));
+        Assert.Equal(["2-room apartment in Palermo"], Names(listItem));
+        Assert.Equal(["2-room apartment in Palermo"], Names(list));
+        // Only the matching ignores case: the attributes come back as stored.
+        Assert.Equal("Palermo", scalar.GetProperty("results")[0].GetProperty("attributes").GetProperty("neighborhood").GetString());
+    }
+
+    [Fact]
+    public async Task Search_StringFilter_IgnoresCaseOfAccentedLetters()
+    {
+        var world = await ToolWorld.CreateAsync(postgres);
+        await using (var db = world.NewDb())
+        {
+            db.Offerings.Add(new Chatbot.Core.Domain.Offering
+            {
+                BusinessId = world.A.Id,
+                Kind = Chatbot.Core.Domain.OfferingKind.Property,
+                Name = "Studio in Núñez",
+                Price = 450,
+                Attributes = JsonSerializer.SerializeToElement(new { neighborhood = "Núñez" }),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var session = await world.NewSessionAsync(world.A);
+        var result = await session.CallAsync(AgentToolFactory.SearchCatalog, """{"filters":{"neighborhood":"NÚÑEZ"}}""");
+
+        Assert.Equal(["Studio in Núñez"], Names(result));
+    }
+
+    [Fact]
+    public async Task Search_NumberAndBooleanFilters_StayTyped()
+    {
+        var world = await ToolWorld.CreateAsync(postgres);
+        await using var a = await world.NewSessionAsync(world.A);
+        await using var b = await world.NewSessionAsync(world.B);
+
+        var roomsAsText = await a.CallAsync(AgentToolFactory.SearchCatalog, """{"filters":{"rooms":"2"}}""");
+        var glutenFreeAsText = await b.CallAsync(AgentToolFactory.SearchCatalog, """{"filters":{"glutenFree":"TRUE"}}""");
+
+        Assert.Empty(Names(roomsAsText));
+        Assert.Empty(Names(glutenFreeAsText));
+    }
+
+    [Fact]
     public async Task Search_NoMatch_ExplainsHowToRetry()
     {
         var world = await ToolWorld.CreateAsync(postgres);
         await using var session = await world.NewSessionAsync(world.A);
 
-        var result = await session.CallAsync(AgentToolFactory.SearchCatalog, """{"filters":{"neighborhood":"palermo"}}""");
+        var result = await session.CallAsync(AgentToolFactory.SearchCatalog, """{"filters":{"neighborhood":"Recoleta"}}""");
 
         Assert.Empty(Names(result));
-        Assert.Contains("exact", result.GetProperty("note").GetString());
+        Assert.Contains("fewer filters", result.GetProperty("note").GetString());
     }
 
     [Theory]
