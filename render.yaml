@@ -22,11 +22,24 @@ services:
         sync: false
       - key: Cors__AllowedOrigin
         value: https://booking-agent-demo.vercel.app,https://ai-booking-agent-six.vercel.app
+      # Groq answers a tool round in about 0.5 s; Gemini's free tier took 5 to 10 s and returns 503 under load (ADR-020).
+      # Groq's free tier allows 200K tokens a day and 8K a minute: past that it answers 429 and Gemini takes the call.
       - key: Llm__Primary__BaseUrl
-        value: https://generativelanguage.googleapis.com/v1beta/openai/
+        value: https://api.groq.com/openai/v1
       - key: Llm__Primary__Model
+        value: openai/gpt-oss-120b
+      - key: Llm__Primary__ApiKey # Groq key
+        sync: false
+      - key: Llm__Fallback__BaseUrl
+        value: https://generativelanguage.googleapis.com/v1beta/openai/
+      - key: Llm__Fallback__Model
         value: gemini-3.5-flash-lite
-      - key: Llm__Primary__ApiKey
+      - key: Llm__Fallback__ApiKey # Gemini key
+        sync: false
+      # Embeddings default to the primary provider, and Groq has none: they stay on Gemini.
+      - key: Embeddings__BaseUrl
+        value: https://generativelanguage.googleapis.com/v1beta/openai/
+      - key: Embeddings__ApiKey # Gemini key, same as Llm__Fallback__ApiKey
         sync: false
       - key: Knowledge__AutoIngest
         value: "false"

@@ -21,10 +21,15 @@ public sealed class DatabaseSeeder(ChatbotDbContext db, TimeProvider clock, ILog
         RestaurantSeed.Create(),
     ];
 
-    /// <summary>Verified on https://ai.google.dev/gemini-api/docs/pricing (paid tier, standard) on 2026-10-09.</summary>
+    /// <summary>
+    /// Gemini verified on https://ai.google.dev/gemini-api/docs/pricing (paid tier, standard) on 2026-10-09. The Groq
+    /// models verified on https://console.groq.com/docs/model/openai/gpt-oss-120b and .../gpt-oss-20b on 2026-10-16.
+    /// </summary>
     private static readonly ModelPricing[] Pricing =
     [
         new() { Model = "gemini-3.5-flash-lite", InputPerMillionUsd = 0.30m, OutputPerMillionUsd = 2.50m },
+        new() { Model = "openai/gpt-oss-120b", InputPerMillionUsd = 0.15m, OutputPerMillionUsd = 0.60m },
+        new() { Model = "openai/gpt-oss-20b", InputPerMillionUsd = 0.075m, OutputPerMillionUsd = 0.30m },
     ];
 
     public async Task SeedAsync(CancellationToken cancellationToken)

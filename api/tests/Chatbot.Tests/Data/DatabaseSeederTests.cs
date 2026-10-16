@@ -289,10 +289,16 @@ public class DatabaseSeederTests(PostgresFixture postgres)
         var (connectionString, _) = await SeededDatabaseAsync();
         await using var db = PostgresFixture.CreateContext(connectionString);
 
-        var row = Assert.Single(await db.ModelPricings.ToListAsync());
-        Assert.Equal("gemini-3.5-flash-lite", row.Model);
-        Assert.Equal(0.30m, row.InputPerMillionUsd);
-        Assert.Equal(2.50m, row.OutputPerMillionUsd);
+        var rows = await db.ModelPricings.OrderBy(p => p.Model)
+            .Select(p => new { p.Model, p.InputPerMillionUsd, p.OutputPerMillionUsd })
+            .ToListAsync();
+        Assert.Equal(
+            [
+                new { Model = "gemini-3.5-flash-lite", InputPerMillionUsd = 0.30m, OutputPerMillionUsd = 2.50m },
+                new { Model = "openai/gpt-oss-120b", InputPerMillionUsd = 0.15m, OutputPerMillionUsd = 0.60m },
+                new { Model = "openai/gpt-oss-20b", InputPerMillionUsd = 0.075m, OutputPerMillionUsd = 0.30m },
+            ],
+            rows);
     }
 
     [Fact]

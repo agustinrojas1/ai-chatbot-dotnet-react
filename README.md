@@ -201,7 +201,7 @@ docker compose up --build
 
 Open http://localhost:3001. In Development the API applies the migrations, seeds the three businesses (28 offerings, 14 days of slots) and indexes the 120 knowledge documents on start; unchanged documents are skipped on later starts. Ports: web 3001, API 8080 (`/health`), PostgreSQL 5432.
 
-`LLM_PRIMARY_MODEL` must support function calling. The repo seeds a `ModelPricing` row for `gemini-3.5-flash-lite`; other models work but show a cost of 0. To index the documents by hand: `dotnet run --project api/src/Chatbot.Api -- ingest`.
+`LLM_PRIMARY_MODEL` must support function calling. The repo seeds `ModelPricing` rows for `gemini-3.5-flash-lite`, `openai/gpt-oss-120b` and `openai/gpt-oss-20b`; other models work but show a cost of 0. To index the documents by hand: `dotnet run --project api/src/Chatbot.Api -- ingest`.
 
 <details>
 <summary><b>Configuration reference</b> (all variables of <code>.env</code>)</summary>
@@ -327,6 +327,7 @@ dotnet run --project evals/Chatbot.Evals -- --retrieval # retrieval only
 | Chat model | Passed | Tool use | Language | Forbidden phrases |
 |---|---|---|---|---|
 | `gemini-3.5-flash-lite` (default; 2026-10-10, previous bilingual corpus) | **59/60** | 98.3 % | 100 % | 100 % |
+| `openai/gpt-oss-120b` on Groq (2026-10-16, 14 tool cases only, ADR-020) | **9/14** | 85.7 % | 100 % | 100 % |
 | Bonsai 2 27B, local (2026-10-16) | **50/60** | 95 % | 100 % | 93.3 % |
 | Bonsai 2 9B, local (2026-10-16) | **34/60** | 68.3 % | 98.3 % | 100 % |
 
@@ -358,7 +359,7 @@ The settings are in `.env.example`. In Docker, the local server must listen on `
 
 ## Known limitations and next steps
 
-- **Gemini is the only provider verified end to end.** The Groq fallback is covered by tests with stub transports but was never called live.
+- **Groq is evaluated on part of the suite only.** The public demo uses Groq first (ADR-020); `gpt-oss-120b` ran the 14 tool cases, not the RAG ones, because the free tier's 200K tokens a day ran out. The switch to Gemini on a 429 is covered by tests, not exercised live.
 - **No full Gemini run on the English corpus yet.** The Gemini free tier allows 1000 embedding requests per day and one full indexing uses about 442.
 - **Unanswerable questions next to a real topic.** The model sometimes answers "we don't offer X" from a passage about a nearby topic; after the prompt fix the re-run passes 13/15, not 100 %.
 - **Mixed questions depend on tool choice.** The insurance question sometimes skips the knowledge search, and the gluten-free + Veggie question fails with empty tool arguments (not investigated yet).
