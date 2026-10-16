@@ -152,12 +152,15 @@ internal static class MarkdownReport
         md.AppendLine();
         md.AppendLine("## Questions");
         md.AppendLine();
-        md.AppendLine("| Question | Pair | Rank of the expected document | Passed the threshold |");
-        md.AppendLine("|---|---|---|---|");
+        md.AppendLine("Best similarity is the highest cosine similarity among the returned passages, to tune `Knowledge:MinSemanticSimilarity`.");
+        md.AppendLine();
+        md.AppendLine("| Question | Pair | Rank of the expected document | Passed the threshold | Best similarity |");
+        md.AppendLine("|---|---|---|---|---|");
         foreach (var result in summary.Results)
         {
             var rank = result.NotRun ? "not run" : result.Case.Unanswerable ? "unanswerable" : result.Rank is { } r ? r.ToString(inv) : "missing";
-            md.AppendLine($"| {result.Case.Id} | {result.Pair ?? "-"} | {rank} | {(result.NotRun ? "-" : result.ThresholdPassed ? "yes" : "no")} |");
+            var best = result.Passages.Max(p => p.SemanticScore) is { } score ? score.ToString("0.000", inv) : "-";
+            md.AppendLine($"| {result.Case.Id} | {result.Pair ?? "-"} | {rank} | {(result.NotRun ? "-" : result.ThresholdPassed ? "yes" : "no")} | {best} |");
         }
 
         return md.ToString();

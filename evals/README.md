@@ -36,7 +36,7 @@ Free tiers answer `429` long before 36 conversations are over. The harness wraps
 
 ## Knowledge base evals (RAG, M8)
 
-The knowledge base (policies, conditions, FAQs) is searched with `search_knowledge_base`, backed by `KnowledgeSearch` (hybrid: embeddings + full text, RRF, relevance threshold). Two kinds of evals; both need the embeddings key (`Embeddings__ApiKey` or `EMBEDDINGS_API_KEY`, which defaults to `Llm__Primary__ApiKey`; model `gemini-embedding-001`) unless run with `--fake`. The harness indexes the 54 documents (`KnowledgeIngestor`, same code as `dotnet run --project api/src/Chatbot.Api -- ingest`) into its own database before searching: with the throwaway container that is a few dozen embedding calls per run; with `ConnectionStrings__Postgres` it is idempotent and skips unchanged documents.
+The knowledge base (policies, conditions, FAQs) is searched with `search_knowledge_base`, backed by `KnowledgeSearch` (hybrid: embeddings + full text, RRF, relevance threshold). Two kinds of evals; both need the embeddings key (`Embeddings__ApiKey` or `EMBEDDINGS_API_KEY`, which defaults to `Llm__Primary__ApiKey`; model `gemini-embedding-001`) unless run with `--fake`. The harness indexes the 120 documents (`KnowledgeIngestor`, same code as `dotnet run --project api/src/Chatbot.Api -- ingest`) into its own database before searching: with the throwaway container that is a few dozen embedding requests per run; with `ConnectionStrings__Postgres` it is idempotent and skips unchanged documents.
 
 **1. Retrieval, no chat model:**
 
@@ -46,13 +46,13 @@ dotnet run --project evals/Chatbot.Evals -- --retrieval            # --filter / 
 dotnet run --project evals/Chatbot.Evals -- --retrieval --fake     # offline: deterministic bag-of-words embeddings
 ```
 
-`cases/rag-retrieval.yaml` has 66 answerable questions (Spanish and English, the three businesses) with the slug(s) of the document that holds the answer, and 14 `unanswerable: true` ones. Each question is searched in the knowledge base of its business and the top 4 passages are compared with `expectSources`. Reported overall and by language pair (question language -> document language; `es->en` and `en->es` are the cross-language ones, the documents are in both languages on purpose):
+`cases/rag-retrieval.yaml` has 198 answerable questions (English, the three businesses; 132 of them written with the generated documents) with the slug(s) of the document that holds the answer, and 14 `unanswerable: true` ones. Each question is searched in the knowledge base of its business and the top 4 passages are compared with `expectSources`. Reported overall and by language pair (question language -> document language; the demo is English only, so every question is `en->en`):
 
 - **recall@4:** the share of questions whose expected document has a chunk in the top 4.
 - **MRR:** mean of 1 / rank of the expected document among the documents of the top 4 (0 when missing).
 - **Threshold (informational, not a target):** for unanswerable questions, how many get `thresholdPassed = false` (the search says "nothing relevant", so the agent is told to offer a person); for answerable ones, how many get `thresholdPassed = true`. It is the figure to look at when retuning `Knowledge:MinSemanticSimilarity`.
 
-Targets: recall@4 >= 0.9 and MRR >= 0.75. A question whose embedding call failed (provider down after the embedder's own retries) is reported as not run and left out of the metrics. The report is `evals/results/<date>-retrieval.md`. `--fake` only finds shared words, so its cross-language numbers are near zero by construction: it proves the harness runs, not the quality.
+Targets: recall@4 >= 0.9 and MRR >= 0.75. A question whose embedding call failed (provider down after the embedder's own retries) is reported as not run and left out of the metrics. The report is `evals/results/<date>-retrieval.md`. The question table also shows the best cosine similarity of each question, to retune the threshold. `--fake` only finds shared words: it proves the harness runs, not the quality.
 
 **2. End to end, with the chat model** (`cases/rag-answers.yaml`, 24 cases; run them with `--category rag_answer`, `rag_unanswerable`, `rag_mixed`, `rag_injection`, or all with the rest):
 

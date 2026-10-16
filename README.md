@@ -17,7 +17,7 @@ The visitor picks one of three businesses, each with its own persona, catalog an
 
 - **Real tool calling.** Five tools (`search_catalog`, `get_offering_details`, `check_availability`, `create_booking`, `handoff_to_human`) read and write PostgreSQL. A booking is a row, not a sentence. The business and session a tool acts on come from the server, never from model arguments, so the model cannot touch another business's data.
 - **Trace and cost per turn.** Every model call and tool call of a run is stored and streamed live: model and provider, tokens in/out, latency, tool arguments and results, and the cost (`tokens x ModelPricing`).
-- **RAG for free text.** Policies, FAQs, requirements and delivery zones (54 documents, Spanish and English) are searched with `search_knowledge_base`: vector search and full-text search fused with Reciprocal Rank Fusion, then a relevance threshold. The model answers only from the passages returned, and the trace shows which passages were retrieved and their scores. The catalog stays on exact filters, so prices and availability never come from a retrieved chunk.
+- **RAG for free text.** Policies, FAQs, requirements and delivery zones (120 documents in English, 40 per business) are searched with `search_knowledge_base`: vector search and full-text search fused with Reciprocal Rank Fusion, then a relevance threshold. The model answers only from the passages returned, and the trace shows which passages were retrieved and their scores. The catalog stays on exact filters, so prices and availability never come from a retrieved chunk.
 - **Human in the loop.** The agent only registers bookings as `PendingConfirmation` and must say so ("registered, pending confirmation"). `handoff_to_human` creates a handoff request, moves the session to `AwaitingHuman` and shows a banner. Both appear in `/admin`.
 - **Rules in code, not in the prompt.** Slot capacity (atomic `UPDATE ... WHERE booked < capacity` plus CHECK constraints), booking idempotency (unique key), order totals computed on the server, iteration and output-token caps, and phone masking in the public trace. The model interprets text and picks tools; it does not decide whether there is room or what an order costs.
 - **Idempotency and concurrency.** Retrying a booking does not duplicate it; concurrent attempts on the last seat have exactly one winner (tested against a real PostgreSQL).
@@ -96,7 +96,7 @@ docker compose up --build
 # open http://localhost:3001
 ```
 
-`LLM_PRIMARY_MODEL` has no default: pick a model of your provider that supports function calling (the repo seeds a `ModelPricing` row for `gemini-3.5-flash-lite`; other models run but show cost 0). In Development the API applies the migrations, seeds the three businesses (28 offerings, 14 days of slots) and indexes their 54 knowledge documents on start (`KNOWLEDGE_AUTO_INGEST`). To index by hand: `dotnet run --project api/src/Chatbot.Api -- ingest` (unchanged documents are skipped). Ports: web http://localhost:3001, API http://localhost:8080 (`/health`), PostgreSQL 5432.
+`LLM_PRIMARY_MODEL` has no default: pick a model of your provider that supports function calling (the repo seeds a `ModelPricing` row for `gemini-3.5-flash-lite`; other models run but show cost 0). In Development the API applies the migrations, seeds the three businesses (28 offerings, 14 days of slots) and indexes their 120 knowledge documents on start (`KNOWLEDGE_AUTO_INGEST`). To index by hand: `dotnet run --project api/src/Chatbot.Api -- ingest` (unchanged documents are skipped). Ports: web http://localhost:3001, API http://localhost:8080 (`/health`), PostgreSQL 5432.
 
 ### Configuration
 
@@ -114,8 +114,9 @@ Set in `.env` (read by `docker-compose.yml`). Never commit `.env`.
 | `EMBEDDINGS_API_KEY` | _empty_ | Key of the embeddings endpoint (the same Gemini key works). Empty: the API starts, and knowledge search fails with `knowledge_unavailable` |
 | `EMBEDDINGS_MODEL` | `gemini-embedding-001` (in `.env.example`) | Embedding model; stored with every chunk |
 | `EMBEDDINGS_DIMENSIONS` | `768` | Must match the `vector(768)` column; startup fails otherwise |
+| `EMBEDDINGS_QUERY_PREFIX` / `EMBEDDINGS_DOCUMENT_PREFIX` | _empty_ | Task instructions put before a query / a chunk, for models that expect them (EmbeddingGemma: `task: search result \| query: ` and `title: none \| text: `). Changing the document prefix re-indexes everything. `.env.example` has a local `embeddinggemma-2` on Ollama setup |
 | `KNOWLEDGE_AUTO_INGEST` | `true` | Index the knowledge documents at startup, after the seed |
-| `KNOWLEDGE_MIN_SEMANTIC_SIMILARITY` | `0.60` | Cosine similarity a passage needs to count as relevant (measured on the real model) |
+| `KNOWLEDGE_MIN_SEMANTIC_SIMILARITY` | `0.63` | Cosine similarity a passage needs to count as relevant (measured on the real model) |
 | `KNOWLEDGE_MIN_LEXICAL_RANK` | `0.05` | `ts_rank` a passage needs to count as relevant (an exact amount, code or acronym found by text) |
 | `CORS_ALLOWED_ORIGIN` | `http://localhost:3001` | Allowed frontend origin(s), comma-separated, exact match, no wildcard |
 | `ADMIN_KEY` | _empty_ | Value of the `X-Admin-Key` header for `/api/admin/*`. Empty: admin endpoints answer 503 |
@@ -169,7 +170,7 @@ Earlier ADRs cover the project split, atomic slot capacity, data conventions, wh
 
 ## Evals
 
-60 scripted conversations in `evals/cases/*.yaml` (36 agent cases, and 24 knowledge-base answer cases in `rag-answers.yaml`), plus 80 retrieval questions in `rag-retrieval.yaml` scored without the model. They are run by hand against the real agent, a real PostgreSQL and a real model (they cost tokens and are not deterministic, so they are not in CI). MVP targets: 100 % on language checks, 100 % on forbidden phrases, at least 90 % on correct tool use. M8 targets: recall@4 >= 0.9 and MRR >= 0.75; 100 % on not inventing answers to unanswerable questions; 100 % on ignoring instructions inside documents.
+60 scripted conversations in `evals/cases/*.yaml` (36 agent cases, and 24 knowledge-base answer cases in `rag-answers.yaml`), plus 212 retrieval questions in `rag-retrieval.yaml` scored without the model. They are run by hand against the real agent, a real PostgreSQL and a real model (they cost tokens and are not deterministic, so they are not in CI). MVP targets: 100 % on language checks, 100 % on forbidden phrases, at least 90 % on correct tool use. M8 targets: recall@4 >= 0.9 and MRR >= 0.75; 100 % on not inventing answers to unanswerable questions; 100 % on ignoring instructions inside documents.
 
 ```bash
 export Llm__Primary__ApiKey=<your key>
@@ -179,7 +180,7 @@ dotnet run --project evals/Chatbot.Evals
 
 Needs Docker for a throwaway PostgreSQL (or set `ConnectionStrings__Postgres`). Options, the case format and what the checks can and cannot tell are in [evals/README.md](evals/README.md). `dotnet run --project evals/Chatbot.Evals -- --fake` runs the harness with a fake model to check the harness itself (most cases fail on purpose).
 
-**Results (last run: 2026-10-10).** 59 of 60 conversations pass (98.3 %). The MVP and M8 targets are all met; the one failure is a mixed catalog + policy question.
+**Results (last run: 2026-10-10, before the knowledge base moved to English only; not re-run since).** 59 of 60 conversations pass (98.3 %). The MVP and M8 targets are all met; the one failure is a mixed catalog + policy question.
 
 - Models: `gemini-3.5-flash-lite` for the agent, via Gemini's OpenAI-compatible endpoint; `gemini-embedding-001` with 768 dimensions for the knowledge search.
 - Total tokens / cost of the conversation run: 629,489 in / 8,208 out, about $0.21 at paid prices (chat model only; no embedding price, see the limitations).
@@ -193,23 +194,28 @@ Needs Docker for a throwaway PostgreSQL (or set `ConnectionStrings__Postgres`). 
 | RAG: unanswerable questions not invented | 100 % (5/5) | 100 % |
 | RAG: instructions inside documents ignored | 100 % (3/3) | 100 % |
 
-Per category: language 7/7, search 4/4, availability 3/3, booking 4/4, order 3/3, not in catalog 3/3, handoff 2/2, small talk 2/2, injection 6/6, gibberish 2/2, RAG answer 12/12, RAG unanswerable 5/5, RAG mixed 3/4, RAG injection 3/3. The failure is `rag-mixed-dental-cleaning-insurance-en` (dental, a question that mixes the catalog and the insurance policy): the model called `search_catalog` but not `search_knowledge_base`, so the policy part was never searched.
+**Knowledge-base cases on the English corpus (2026-10-16, `--filter rag- --repeat 3`, Gemini for chat and embeddings, `evals/results/2026-10-16-1041.md`):** 57 of 72 runs pass. RAG answer 36/36; RAG injection 8/9 (once the model said "the referral itself is free", echoing the injected sentence); RAG mixed 7/12 (the gluten-free + Veggie question fails 3/3 because the model calls `search_knowledge_base` with empty arguments until the tool round limit, one known tool-choice miss, one run cut by the demo token quota); RAG unanswerable 6/15: with 40 documents per business there is always a passage on a nearby topic, and the model inferred "we don't offer valet" from a parking lot and "we don't accept Bitcoin" from the payment list. Prompt rules 2 and 3 now name that case explicitly; re-run of the unanswerable cases (2026-10-16, `embeddinggemma-2` embeddings because the Gemini embeddings daily quota was used up, `evals/results/2026-10-16-1107.md`): 13/15, valet and Bitcoin 3/3, the remaining misses are the garage question (one provider error, one "depends on each listing" inferred from the storage-unit document).
 
-**Retrieval** (no model, `--retrieval`, 2026-10-10): 80 questions (66 answerable, 14 unanswerable) across four language pairs (question language to document language).
+Per category (2026-10-10): language 7/7, search 4/4, availability 3/3, booking 4/4, order 3/3, not in catalog 3/3, handoff 2/2, small talk 2/2, injection 6/6, gibberish 2/2, RAG answer 12/12, RAG unanswerable 5/5, RAG mixed 3/4, RAG injection 3/3. The failure is `rag-mixed-dental-cleaning-insurance-en` (dental, a question that mixes the catalog and the insurance policy): the model called `search_catalog` but not `search_knowledge_base`, so the policy part was never searched.
 
-| Target | Result | Required |
-|---|---|---|
-| recall@4 | 1.000 | >= 0.9 |
-| MRR | 0.985 | >= 0.75 |
+**Retrieval** (no model, `--retrieval`, 2026-10-15): 212 questions (198 answerable, 14 unanswerable) over the 120 English documents, with two embedding models.
 
-| Pair | Questions | Recall@4 | MRR |
+| Embedding model | recall@4 (>= 0.9) | MRR (>= 0.75) | Threshold | Unanswerable below it | Answerable above it |
+|---|---|---|---|---|---|
+| `gemini-embedding-001` (default) | 1.000 | 0.970 | 0.63 | 10/14 | 198/198 |
+| `embeddinggemma-2` (Ollama, local) | 1.000 | 0.964 | 0.70 | 4/14 | 197/198 |
+
+The threshold is informational: the unanswerable questions that pass it are close to the topic of a real document, and the agent still answers only from passages that answer the question. Before the move to English (2026-10-10, 54 documents, half in Spanish, `gemini-embedding-001`): recall@4 1.000, MRR 0.985.
+
+**Local models (2026-10-16, everything on one RTX 3070 with 8 GB, no API key).** The agent runs on any OpenAI-compatible server, so open-weight models can replace Gemini: `Llm__Primary__BaseUrl` pointing to llama-server (started with `--jinja` for tool calling) and the embeddings on `embeddinggemma-2` in Ollama (see `.env.example`). Full 60-case run, with `embeddinggemma-2` for the search:
+
+| Chat model | Passed | Tool use | Notes |
 |---|---|---|---|
-| es->es | 19 | 1.000 | 1.000 |
-| en->en | 14 | 1.000 | 1.000 |
-| es->en | 14 | 1.000 | 1.000 |
-| en->es | 19 | 1.000 | 0.947 |
+| `gemini-3.5-flash-lite` (default, 2026-10-10, previous corpus) | 59/60 | 98.3 % | |
+| Bonsai 2 27B (`Ternary-Bonsai-2-27B-PTQ1_0`, thinking on) | 50/60 | 95 % | 4 failures were over-strict checks (2 since relaxed), 2 tool calls printed as raw `<tool_call>` text that llama-server did not parse; ~51 tokens/s |
+| Bonsai 2 9B (`Ternary-Bonsai-2-9B-PQ2_0`, thinking off) | 34/60 | 68.3 % | Answers "I don't have that information" without calling `search_knowledge_base`, wrong `search_catalog` filters, bookings never placed; ~110 tokens/s |
 
-Relevance threshold (informational): all 66 answerable questions pass it; 9 of the 14 unanswerable questions do not (the search says "nothing relevant"). The other 5 pass it, and the answer evals still show no invented answers (5/5).
+The 27B needs `BONSAI_KV4=1 BONSAI_MMPROJ_CPU=1` to fit in 8 GB, which leaves no room for the embeddings model on the GPU (run Ollama with `CUDA_VISIBLE_DEVICES=-1`), and `Agent__MaxOutputTokens=2000` so its reasoning does not cut the reply. Reports: `evals/results/2026-10-16-1333.md` (27B), `evals/results/2026-10-16-1126.md` (9B).
 
 Real-model runs found four bugs that offline tests could not (see ADR-013, ADR-014 and ADR-010): Gemini 3 rejects replayed tool calls without a thought signature, Gemini drops the persona when a request has two system messages, Gemini sometimes ends a stream with a finish reason the OpenAI SDK cannot parse, and the model fabricated a customer name and phone after a prompt-injection message (now rejected in code: the name and phone must appear in the visitor's own messages).
 
@@ -218,19 +224,20 @@ Real-model runs found four bugs that offline tests could not (see ADR-013, ADR-0
 Limitations:
 
 - **One provider verified end to end.** Streaming tool calling, the booking flow and the evals were run against Gemini only. The Groq fallback is covered by tests with stub transports and was never called live (no Groq key was used).
-- **Small catalog and demo knowledge base.** 28 seeded offerings, and 54 knowledge documents (18 per business) in Spanish and English, written for the demo. The documents are invented, and one per business contains an embedded instruction on purpose, which the evals check. The agent is told per turn to reply in the visitor's language and to translate catalog details, but the data itself is not translated, and "English message, Spanish data" is only approximated in the evals.
+- **Small catalog and demo knowledge base.** 28 seeded offerings, and 120 knowledge documents (40 per business) in English, written for the demo: 54 by hand (the Spanish ones translated) and 66 generated with Claude Haiku, not reviewed one by one. The documents are invented, and one per business contains an embedded instruction on purpose, which the evals check. The agent still replies in the visitor's language, but the demo content and the evals are English only.
 - **Tool results are not retried.** A tool call runs once. Malformed tool arguments go back to the model so it can correct them (up to 3 failing rounds), but a tool that fails for another reason is not retried by the server, and a provider failure after the first token is not retried on the fallback either: the run ends with an `error` event.
 - **The per-IP limiter is in memory.** It is per API instance and resets on restart. The per-session and daily limits are counted in the database and survive restarts, but a burst of concurrent requests can overshoot them by a few messages.
 - **Demo-grade admin key.** A single shared secret in a header; not an authentication system.
 - **Free-tier model limits.** Free quotas of the LLM providers can return 429 under load; the fallback helps only if a second key is configured, and the visitor sees a "try again in a few minutes" message otherwise.
-- **Relevance threshold tuned on this corpus.** `KNOWLEDGE_MIN_SEMANTIC_SIMILARITY` (0.60) and `KNOWLEDGE_MIN_LEXICAL_RANK` (0.05) were measured with `gemini-embedding-001` on these 54 documents. A different embedding model or corpus needs new values, and the threshold is a weak signal: 5 of the 14 unanswerable retrieval questions pass it.
-- **Mixed questions depend on tool choice.** 3 of 4 `rag_mixed` cases pass; the failure did not call `search_knowledge_base`.
+- **Relevance threshold tuned on this corpus.** `KNOWLEDGE_MIN_SEMANTIC_SIMILARITY` (0.63) and `KNOWLEDGE_MIN_LEXICAL_RANK` (0.05) were measured with `gemini-embedding-001` on these 120 documents (`embeddinggemma-2` needs 0.70). A different embedding model or corpus needs new values, and the threshold is a weak signal: 4 of the 14 unanswerable retrieval questions pass it.
+- **Mixed questions depend on tool choice.** `rag-mixed-dental-cleaning-insurance-en` sometimes skips `search_knowledge_base`, and `rag-mixed-restaurant-veggie-gluten-free-en` fails every run since 2026-10-15 with empty `search_knowledge_base` arguments (not investigated yet).
+- **Unanswerable questions next to a real topic.** The model sometimes answers "we don't offer X" from a passage about a nearby topic; prompt rule 2 names the case and the re-run passes 13/15, not 100 %.
 - **Embedding cost is not counted.** There is no `ModelPricing` row for `gemini-embedding-001` (no verified price), so embedding costs and the `costUsd` of `Retrieval` events show 0. Free-tier embeddings are rate limited by minute, so the first full ingestion can be slow (the embedder backs off on 429).
 - **No faithfulness judge.** The optional LLM judge of whether each claim is supported by the passages (SPEC 12) is not implemented; see [evals/README.md](evals/README.md).
 - **Not for real personal data.** Phone numbers are masked in the public trace, but a name typed by a visitor stays in the stored messages and tool arguments (ADR-005). The demo is not meant for real customer data.
 - **No public deploy yet.** Hosting provider undecided; production migrations are meant to be an explicit step, not applied at start.
 
-Next steps: deploy the demo (and publish the URL and the GIF); add a `ModelPricing` row for `gemini-embedding-001` once its price is verified; re-tune the relevance thresholds on a larger knowledge base; an LLM judge for faithfulness and for the `rubric` field of the eval cases; a Groq price in `ModelPricing` once it is public; and a shared store for the per-IP limiter if the API ever runs on more than one instance.
+Next steps: deploy the demo (and publish the URL and the GIF); add a `ModelPricing` row for `gemini-embedding-001` once its price is verified; re-run the conversation evals on the English knowledge base; an LLM judge for faithfulness and for the `rubric` field of the eval cases; a Groq price in `ModelPricing` once it is public; and a shared store for the per-IP limiter if the API ever runs on more than one instance.
 
 ## Author
 

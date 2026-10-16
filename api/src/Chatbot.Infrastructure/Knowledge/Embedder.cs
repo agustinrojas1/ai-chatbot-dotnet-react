@@ -33,6 +33,15 @@ public sealed class Embedder(
     public int Dimensions => options.Value.Dimensions;
     public int BatchSize => options.Value.BatchSize;
     public bool IsConfigured => options.Value.IsConfigured;
+    public string DocumentPrefix => options.Value.DocumentPrefix;
+
+    /// <summary>Embeds a search query, with <see cref="EmbeddingOptions.QueryPrefix"/>.</summary>
+    public Task<EmbeddingBatch> EmbedQueryAsync(string query, CancellationToken cancellationToken) =>
+        EmbedAsync([options.Value.QueryPrefix + query], cancellationToken);
+
+    /// <summary>Embeds chunks to index, each with <see cref="EmbeddingOptions.DocumentPrefix"/>.</summary>
+    public Task<EmbeddingBatch> EmbedDocumentsAsync(IEnumerable<string> texts, CancellationToken cancellationToken) =>
+        EmbedAsync([.. texts.Select(t => options.Value.DocumentPrefix + t)], cancellationToken);
 
     public async Task<EmbeddingBatch> EmbedAsync(IReadOnlyList<string> texts, CancellationToken cancellationToken)
     {

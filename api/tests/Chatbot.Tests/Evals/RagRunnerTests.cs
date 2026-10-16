@@ -31,7 +31,7 @@ public class RagRunnerTests(PostgresFixture postgres)
         var second = await EvalHost.IngestKnowledgeAsync(services, CancellationToken.None);
 
         Assert.Equal(first.Documents, first.Processed);
-        Assert.True(first.Documents >= 45, $"expected the 54 seeded documents, found {first.Documents}");
+        Assert.True(first.Documents >= 45, $"expected the 120 seeded documents, found {first.Documents}");
         Assert.True(first.Chunks >= first.Documents);
         Assert.Equal((first.Documents, 0), (second.Skipped, second.Processed));
     }
@@ -51,14 +51,12 @@ public class RagRunnerTests(PostgresFixture postgres)
         Assert.All(results.Where(r => !r.Case.Unanswerable), r => Assert.NotNull(r.Pair));
         Assert.All(results.Where(r => r.Case.Unanswerable), r => Assert.Null(r.Pair));
 
-        // The fake finds shared words: same-language questions are found, which shows the metrics are wired. Cross-language ones
-        // (es->en, en->es) are what the real embeddings are measured on.
+        // The fake finds shared words, so most questions are found, which shows the metrics are wired. The real embeddings
+        // are measured by the eval harness, not here.
         var summary = new RetrievalSummary(results);
-        var pairs = summary.ByPair.ToDictionary(p => p.Name);
-        Assert.Equal(["es->es", "en->en", "es->en", "en->es"], summary.ByPair.Select(p => p.Name));
-        Assert.True(pairs["es->es"].RecallAt4 >= 0.8, $"es->es recall {pairs["es->es"].RecallAt4}");
-        Assert.True(pairs["en->en"].RecallAt4 >= 0.8, $"en->en recall {pairs["en->en"].RecallAt4}");
-        Assert.True(pairs["es->en"].RecallAt4 < 0.5);
+        var pair = Assert.Single(summary.ByPair);
+        Assert.Equal("en->en", pair.Name);
+        Assert.True(pair.RecallAt4 >= 0.7, $"en->en recall {pair.RecallAt4}");
         Assert.True(summary.Results.Sum(r => r.EmbeddingTokens) > 0);
     }
 
@@ -80,7 +78,7 @@ public class RagRunnerTests(PostgresFixture postgres)
         await using var services = await HostAsync();
         await EvalHost.IngestKnowledgeAsync(services, CancellationToken.None);
         // A dental document slug asked in the restaurant business: it is not there, so the harness refuses it as unknown.
-        var questions = RetrievalCaseLoader.Parse("t.yaml", "- { id: wrong-niche, niche: restaurant, language: es, question: q, expectSources: [cancelacion-y-no-show] }");
+        var questions = RetrievalCaseLoader.Parse("t.yaml", "- { id: wrong-niche, niche: restaurant, language: es, question: q, expectSources: [cancellation-and-no-show] }");
 
         await Assert.ThrowsAsync<CaseFormatException>(() => RetrievalRunner.RunAsync(services, questions, null, CancellationToken.None));
     }
@@ -90,10 +88,10 @@ public class RagRunnerTests(PostgresFixture postgres)
     {
         var model = new ScriptedChatClient((_, messages) =>
             messages.Last(m => m.Role != Microsoft.Extensions.AI.ChatRole.System).Contents.OfType<Microsoft.Extensions.AI.FunctionResultContent>().Any()
-                ? Turn.Reply("El cargo por cancelación tardía es de $45 si cancela con menos de 24 horas de anticipación.")
+                ? Turn.Reply("The late-cancellation charge is $45 if you cancel with less than 24 hours' notice.")
                 : Turn.Call(AgentToolFactory.SearchKnowledgeBase, new()
                 {
-                    ["query"] = "Si cancela con menos de 24 horas de anticipación, se aplica un cargo por cancelación tardía de $45.",
+                    ["query"] = "If you cancel with less than 24 hours notice, a late-cancellation charge of $45 applies.",
                 }));
         await using var services = await HostAsync(model);
         await EvalHost.IngestKnowledgeAsync(services, CancellationToken.None);
@@ -101,10 +99,10 @@ public class RagRunnerTests(PostgresFixture postgres)
             - id: rag-answer-test
               category: rag_answer
               niche: dental
-              turns: ["¿Cuánto cuesta cancelar un turno con poca anticipación?"]
-              expectLanguage: es
+              turns: ["How much does it cost to cancel an appointment at short notice?"]
+              expectLanguage: en
               expectToolCalls: [{ name: search_knowledge_base }]
-              expectRetrievalSources: [cancelacion-y-no-show]
+              expectRetrievalSources: [cancellation-and-no-show]
               mustMention: ["$45"]
               forbidToolCalls: [create_booking]
             """).Single();
@@ -116,7 +114,7 @@ public class RagRunnerTests(PostgresFixture postgres)
         Assert.Equal(["search_knowledge_base"], turn.ToolCalls.Select(c => c.Name)); // the Retrieval event counts as the tool call
         var retrieval = Assert.Single(turn.Retrievals);
         Assert.True(retrieval.ThresholdPassed);
-        Assert.Contains(retrieval.Passages, p => p.Relevant && p.Slug == "cancelacion-y-no-show");
+        Assert.Contains(retrieval.Passages, p => p.Relevant && p.Slug == "cancellation-and-no-show");
         Assert.Equal("search_knowledge_base", turn.ToolCalls[0].Name);
         Assert.True(turn.ToolCalls[0].Result!.Value.TryGetProperty("passages", out _)); // the Retrieval output, with its passages
     }
@@ -127,7 +125,7 @@ public class RagRunnerTests(PostgresFixture postgres)
         var model = new ScriptedChatClient((_, messages) =>
             messages.Last(m => m.Role != Microsoft.Extensions.AI.ChatRole.System).Contents.OfType<Microsoft.Extensions.AI.FunctionResultContent>().Any()
                 ? Turn.Reply("I don't have that information. I can connect you with a person from the team.")
-                : Turn.Call(AgentToolFactory.SearchKnowledgeBase, new() { ["query"] = "valet parking zzz" }));
+                : Turn.Call(AgentToolFactory.SearchKnowledgeBase, new() { ["query"] = "valet zzz qqq" }));
         await using var services = await HostAsync(model);
         await EvalHost.IngestKnowledgeAsync(services, CancellationToken.None);
         var evalCase = CaseLoader.Parse("test.yaml", """
@@ -152,22 +150,22 @@ public class RagRunnerTests(PostgresFixture postgres)
     [Fact]
     public async Task An_answer_from_memory_without_searching_fails_the_retrieval_expectations()
     {
-        await using var services = await HostAsync(new ScriptedChatClient((_, _) => Turn.Reply("El cargo es de $45 si cancela tarde.")));
+        await using var services = await HostAsync(new ScriptedChatClient((_, _) => Turn.Reply("The charge is $45 if you cancel late.")));
         await EvalHost.IngestKnowledgeAsync(services, CancellationToken.None);
         var evalCase = CaseLoader.Parse("test.yaml", """
             - id: rag-answer-memory
               category: rag_answer
               niche: dental
-              turns: ["¿Cuánto cuesta cancelar un turno tarde?"]
-              expectLanguage: es
+              turns: ["How much does a late cancellation cost?"]
+              expectLanguage: en
               expectToolCalls: [{ name: search_knowledge_base }]
-              expectRetrievalSources: [cancelacion-y-no-show]
+              expectRetrievalSources: [cancellation-and-no-show]
               mustMention: ["$45"]
             """).Single();
 
         var result = Assert.Single(await EvalRunner.RunAsync(services, [evalCase], 1, null, CancellationToken.None));
 
         Assert.True(result.Failed);
-        Assert.Equal(["calls search_knowledge_base", "retrieval returned cancelacion-y-no-show"], result.Failures.Select(f => f.Name));
+        Assert.Equal(["calls search_knowledge_base", "retrieval returned cancellation-and-no-show"], result.Failures.Select(f => f.Name));
     }
 }

@@ -11,7 +11,7 @@ updated: 2026-09-05
 
 ## Allergens by dish
 
-Every pizza on our menu contains gluten in the regular crust and dairy in the cheese. For a gluten-free crust, see our Spanish guide on the gluten-free crust and cross-contamination.
+Every pizza on our menu contains gluten in the regular crust and dairy in the cheese. For a gluten-free crust, see our guide on the gluten-free crust and cross-contamination.
 
 - Prosciutto & Mushroom: gluten, dairy and pork.
 - Garlic Bread: gluten and dairy (butter).

@@ -30,7 +30,7 @@
   forbidToolCalls: [create_booking]
   forbidPhrases: ["tenemos sushi", "tenemos ramen", "nuestro sushi", "nuestro ramen"]
   mustMention:
-    - anyOf: ["pizza", "pasta", "menú"]
+    - anyOf: ["pizza", "pizzería", "pasta", "menú"]
 
 - id: notcat-realestate-commercial-en
   category: not_in_catalog

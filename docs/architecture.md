@@ -173,7 +173,7 @@ flowchart LR
 | `Embeddings:Dimensions` | `EMBEDDINGS_DIMENSIONS` | `768` | Must equal the `vector(768)` column (`KnowledgeSchema.EmbeddingDimensions`); startup fails otherwise. To change it: edit the constant, add a migration and re-index (ADR-017) |
 | `Embeddings:BatchSize`, `MaxRetries`, `RetryBaseDelaySeconds`, `MaxRetryDelaySeconds` | - | `32`, `6`, `2`, `60` | Indexing requests and 429 backoff |
 | `Knowledge:AutoIngest` | `KNOWLEDGE_AUTO_INGEST` | on in Development only | Index at startup after the seed |
-| `Knowledge:MinSemanticSimilarity` | `KNOWLEDGE_MIN_SEMANTIC_SIMILARITY` | `0.60` | Cosine similarity of a passage to count as relevant (measured on the real model, ADR-016) |
+| `Knowledge:MinSemanticSimilarity` | `KNOWLEDGE_MIN_SEMANTIC_SIMILARITY` | `0.63` | Cosine similarity of a passage to count as relevant (measured on the real model, ADR-016, ADR-018) |
 | `Knowledge:MinLexicalRank` | `KNOWLEDGE_MIN_LEXICAL_RANK` | `0.05` | `ts_rank` of a passage to count as relevant (a lexical hit already has every content word) |
 
 Tests use `pgvector/pgvector:pg17` (Testcontainers) and a deterministic fake `IEmbeddingGenerator` that hashes words into a vector; no network. The persona `BUSINESS FACTS` blocks (opening hours, "accepts most insurance plans") were left as they are: they overlap with some documents, and a persona line can answer from memory before the agent searches. If the evals show that, remove them.
