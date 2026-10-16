@@ -324,6 +324,11 @@ internal static class Evaluator
     public static string Shorten(string text, int max = 200)
     {
         var line = text.ReplaceLineEndings(" ").Trim();
-        return line.Length <= max ? line : line[..max] + "…";
+        if (line.Length <= max)
+            return line;
+
+        // Never cut an emoji (a surrogate pair) in half: a lone surrogate cannot be written as UTF-8 and the report would fail.
+        var cut = char.IsHighSurrogate(line[max - 1]) ? max - 1 : max;
+        return line[..cut] + "…";
     }
 }

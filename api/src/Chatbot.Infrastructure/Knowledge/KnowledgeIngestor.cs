@@ -17,7 +17,7 @@ public sealed record IngestionReport(
 
 /// <summary>
 /// Indexes the knowledge documents into <c>knowledge_documents</c>/<c>knowledge_chunks</c> (SPEC 7.6). Idempotent: a document
-/// is skipped when its hash (content, embedding model, dimensions and chunker) is unchanged, so a second run calls no API.
+/// is skipped when its hash (content, embedding model, dimensions, document prefix and chunker) is unchanged, so a second run calls no API.
 /// Changing the model or the dimensions changes every hash, so everything is re-embedded and embeddings of two models never
 /// coexist. The chunks of a document are replaced in one transaction, after the embeddings were obtained, so a provider
 /// failure leaves the previous version of the document untouched. Documents that disappeared from the source are deleted.
@@ -59,7 +59,7 @@ public sealed class KnowledgeIngestor(
             if (pending.Count == 0)
                 return;
 
-            var embedded = await embedder.EmbedAsync([.. pending.SelectMany(p => p.Chunks.Select(c => c.Text))], cancellationToken);
+            var embedded = await embedder.EmbedDocumentsAsync(pending.SelectMany(p => p.Chunks.Select(c => c.Text)), cancellationToken);
             var offset = 0;
             foreach (var item in pending)
             {
@@ -140,7 +140,7 @@ public sealed class KnowledgeIngestor(
 
     private string Hash(string normalizedContent)
     {
-        var input = $"{embedder.Model}\n{embedder.Dimensions}\n{ChunkerSettings.Signature}\n{normalizedContent}";
+        var input = $"{embedder.Model}\n{embedder.Dimensions}\n{embedder.DocumentPrefix}\n{ChunkerSettings.Signature}\n{normalizedContent}";
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
     }
 

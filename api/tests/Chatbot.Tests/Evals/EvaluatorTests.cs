@@ -315,12 +315,12 @@ public class EvaluatorTests
         [Fact]
         public void The_expected_document_must_be_among_the_relevant_passages_of_a_search()
         {
-            var evalCase = Case("expectRetrievalSources: [cancelacion-y-no-show]");
+            var evalCase = Case("expectRetrievalSources: [cancellation-and-no-show]");
 
-            Assert.True(Evaluate(evalCase, Searched(("pickup-policy#0", true), ("cancelacion-y-no-show#1", true))).Passed);
+            Assert.True(Evaluate(evalCase, Searched(("pickup-policy#0", true), ("cancellation-and-no-show#1", true))).Passed);
 
-            var below = Assert.Single(Evaluate(evalCase, Searched(("cancelacion-y-no-show#1", false), ("pickup-policy#0", true))).Failures);
-            Assert.Equal("retrieval returned cancelacion-y-no-show", below.Name); // returned, but under the threshold: the model never saw it
+            var below = Assert.Single(Evaluate(evalCase, Searched(("cancellation-and-no-show#1", false), ("pickup-policy#0", true))).Failures);
+            Assert.Equal("retrieval returned cancellation-and-no-show", below.Name); // returned, but under the threshold: the model never saw it
             Assert.Equal("relevant passages returned: pickup-policy#0", below.Detail);
 
             var other = Assert.Single(Evaluate(evalCase, Searched(("pickup-policy#0", true))).Failures);
@@ -424,5 +424,16 @@ public class EvaluatorTests
             Assert.True(Evaluate(notRequested, Turn("ok")).Passed);
             Assert.Equal("the session has 1 handoff request(s)", Assert.Single(Evaluate(notRequested, Turn("ok") with { Handoffs = 1 }).Failures).Detail);
         }
+    }
+
+    [Fact]
+    public void Shorten_never_splits_an_emoji()
+    {
+        var text = new string('a', 199) + "🍕 and more";
+
+        var shortened = Evaluator.Shorten(text);
+
+        Assert.Equal(new string('a', 199) + "…", shortened);
+        Assert.Equal(shortened.Length, System.Text.Encoding.UTF8.GetString(System.Text.Encoding.UTF8.GetBytes(shortened)).Length);
     }
 }

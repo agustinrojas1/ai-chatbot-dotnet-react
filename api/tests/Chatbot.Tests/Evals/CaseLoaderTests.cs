@@ -244,7 +244,7 @@ public class CaseLoaderTests
               niche: dental
               turns:
                 - say: "Do you do root canals?"
-                  expectRetrievalSources: [cancelacion-y-no-show]
+                  expectRetrievalSources: [cancellation-and-no-show]
               expectRetrievalSources: [a-doc, other-doc]
               expectToolCalls: [{ name: search_knowledge_base }]
             - id: rag-case-2
@@ -256,7 +256,7 @@ public class CaseLoaderTests
 
         Assert.Equal([EvalCategory.RagUnanswerable, EvalCategory.RagMixed], cases.Select(c => c.Category));
         Assert.Equal(["a-doc", "other-doc"], cases[0].Expect.RetrievalSources);
-        Assert.Equal(["cancelacion-y-no-show"], cases[0].Turns[0].Expect.RetrievalSources);
+        Assert.Equal(["cancellation-and-no-show"], cases[0].Turns[0].Expect.RetrievalSources);
         Assert.Equal("rag_unanswerable", CaseLoader.Name(EvalCategory.RagUnanswerable));
         Assert.Equal(EvalCategory.RagInjection, CaseLoader.ParseCategory("rag_injection"));
     }
@@ -281,8 +281,7 @@ public class CaseLoaderTests
         Assert.All(rag.Where(c => c.Category == EvalCategory.RagUnanswerable),
             c => Assert.True(c.Expect.MustMention.Count + c.Turns.Sum(t => t.Expect.MustMention.Count) > 0, c.Id));
         Assert.All(rag.Where(c => c.Category == EvalCategory.RagInjection), c => Assert.NotEmpty(c.Expect.ForbidPhrases));
-        Assert.Contains(rag, c => c.Expect.Language == ReplyLanguage.Spanish);
-        Assert.Contains(rag, c => c.Expect.Language == ReplyLanguage.English);
+        Assert.All(rag, c => Assert.Equal(ReplyLanguage.English, c.Expect.Language)); // the demo is English only
         Assert.DoesNotContain(cases, c => c.Id.StartsWith("ret-"));
     }
 }

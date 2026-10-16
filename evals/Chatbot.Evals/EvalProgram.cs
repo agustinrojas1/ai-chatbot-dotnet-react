@@ -46,6 +46,18 @@ internal static class EvalProgram
             Console.Error.WriteLine(ex.Message);
             return CouldNotRun;
         }
+        catch (EmbeddingException ex)
+        {
+            // Only indexing gets here: a query whose embedding fails is reported as not run by the runners instead.
+            Console.Error.WriteLine($"Could not index the knowledge base: {ex.Message}");
+            if (ex.Message.Contains("HTTP 429", StringComparison.Ordinal))
+            {
+                Console.Error.WriteLine("The embeddings provider refused for quota even after the retries (the Gemini free tier also has a daily limit). " +
+                    "Wait for the quota to reset, or set Embeddings__BaseUrl, Embeddings__ApiKey and Embeddings__Model to another provider (.env.example shows a local Ollama).");
+            }
+
+            return CouldNotRun;
+        }
         catch (OperationCanceledException)
         {
             Console.Error.WriteLine("Cancelled.");

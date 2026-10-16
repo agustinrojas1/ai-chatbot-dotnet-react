@@ -33,8 +33,10 @@ services:
       Embeddings__ApiKey: ${EMBEDDINGS_API_KEY:-}
       Embeddings__Model: ${EMBEDDINGS_MODEL:-}
       Embeddings__Dimensions: ${EMBEDDINGS_DIMENSIONS:-768}
+      Embeddings__QueryPrefix: ${EMBEDDINGS_QUERY_PREFIX:-}
+      Embeddings__DocumentPrefix: ${EMBEDDINGS_DOCUMENT_PREFIX:-}
       Knowledge__AutoIngest: ${KNOWLEDGE_AUTO_INGEST:-true}
-      Knowledge__MinSemanticSimilarity: ${KNOWLEDGE_MIN_SEMANTIC_SIMILARITY:-0.60}
+      Knowledge__MinSemanticSimilarity: ${KNOWLEDGE_MIN_SEMANTIC_SIMILARITY:-0.63}
       Knowledge__MinLexicalRank: ${KNOWLEDGE_MIN_LEXICAL_RANK:-0.05}
       Admin__Key: ${ADMIN_KEY:-}
       Admin__MaskPhones: ${ADMIN_MASK_PHONES:-true}
@@ -48,6 +50,8 @@ services:
       RateLimit__DailyRequests: ${RATE_LIMIT_DAILY_REQUESTS:-500}
       Security__TrustedProxyCidr: ${SECURITY_TRUSTED_PROXY_CIDR:-127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7}
       Security__IpHashSalt: ${IP_HASH_SALT:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # a local embeddings server (Ollama) on the host
     depends_on:
       postgres:
         condition: service_healthy

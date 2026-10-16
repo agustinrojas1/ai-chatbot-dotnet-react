@@ -47,7 +47,7 @@ public sealed class KnowledgeSearch(
         var settings = options.Value;
         var started = Stopwatch.GetTimestamp();
 
-        var embedded = await embedder.EmbedAsync([query], cancellationToken);
+        var embedded = await embedder.EmbedQueryAsync(query, cancellationToken);
         var vector = new Vector(embedded.Vectors[0]);
         var model = embedder.Model;
 

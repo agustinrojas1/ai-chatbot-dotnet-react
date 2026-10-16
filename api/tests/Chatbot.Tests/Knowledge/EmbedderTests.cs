@@ -36,6 +36,22 @@ public class EmbedderTests
     }
 
     [Fact]
+    public async Task Queries_and_documents_get_their_own_task_prefix()
+    {
+        var generator = new FakeEmbeddingGenerator();
+        var options = TestKnowledge.EmbeddingSettings();
+        options.QueryPrefix = "task: search result | query: ";
+        options.DocumentPrefix = "title: none | text: ";
+        var embedder = TestKnowledge.NewEmbedder(generator, options);
+
+        await embedder.EmbedQueryAsync("parking", CancellationToken.None);
+        await embedder.EmbedDocumentsAsync(["Parking > Hours", "Parking > Price"], CancellationToken.None);
+
+        Assert.Equal(["task: search result | query: parking"], generator.Requests[0]);
+        Assert.Equal(["title: none | text: Parking > Hours", "title: none | text: Parking > Price"], generator.Requests[1]);
+    }
+
+    [Fact]
     public async Task Without_usage_from_the_provider_tokens_are_estimated_and_flagged()
     {
         var generator = new FakeEmbeddingGenerator { ReportUsage = false };

@@ -17,7 +17,7 @@ public class RetrievalCaseLoaderTests
               niche: dental
               language: es
               question: "¿Cuánto cuesta cancelar tarde?"
-              expectSources: [cancelacion-y-no-show, other-doc]
+              expectSources: [cancellation-and-no-show, other-doc]
             - id: ret-b
               niche: restaurant
               language: en
@@ -27,7 +27,7 @@ public class RetrievalCaseLoaderTests
 
         Assert.Equal(["ret-a", "ret-b"], cases.Select(c => c.Id));
         Assert.Equal((EvalNiche.Dental, ReplyLanguage.Spanish, false), (cases[0].Niche, cases[0].Language, cases[0].Unanswerable));
-        Assert.Equal(["cancelacion-y-no-show", "other-doc"], cases[0].ExpectSources);
+        Assert.Equal(["cancellation-and-no-show", "other-doc"], cases[0].ExpectSources);
         Assert.True(cases[1].Unanswerable);
         Assert.Empty(cases[1].ExpectSources);
     }
@@ -67,7 +67,7 @@ public class RetrievalCaseLoaderTests
 
         Assert.True(answerable.Count >= 30, $"M8 asks for at least 30 questions, found {answerable.Count}.");
         Assert.Equal(Enum.GetValues<EvalNiche>(), questions.Select(q => q.Niche).Distinct().Order());
-        Assert.Equal(Enum.GetValues<ReplyLanguage>(), answerable.Select(q => q.Language).Distinct().Order());
+        Assert.All(questions, q => Assert.Equal(ReplyLanguage.English, q.Language)); // the demo is English only
         Assert.Contains(questions, q => q.Unanswerable);
         Assert.Equal(questions.Count, questions.Select(q => q.Id).Distinct().Count());
     }

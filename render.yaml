@@ -1,0 +1,38 @@
+# Render Blueprint for the API (docs/decisions.md, ADR-019). The free plan sleeps after 15 minutes without
+# traffic; an uptime monitor on /health keeps it awake. Migrations and seed run from .github/workflows/ingest.yml.
+services:
+  - type: web
+    name: ai-booking-agent-api
+    runtime: docker
+    plan: free
+    region: virginia # next to Neon's aws-us-east-1
+    dockerContext: ./api
+    dockerfilePath: ./api/Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - api/**
+    envVars:
+      - key: PORT # the Dockerfile listens on 8080
+        value: "8080"
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__Postgres # Npgsql format: python3 deploy/neon-connection.py
+        sync: false
+      - key: Cors__AllowedOrigin
+        value: https://ai-booking-agent.vercel.app
+      - key: Llm__Primary__BaseUrl
+        value: https://generativelanguage.googleapis.com/v1beta/openai/
+      - key: Llm__Primary__Model
+        value: gemini-3.5-flash-lite
+      - key: Llm__Primary__ApiKey
+        sync: false
+      - key: Knowledge__AutoIngest
+        value: "false"
+      - key: Admin__Key
+        generateValue: true
+      - key: Admin__MaskPhones
+        value: "true"
+      - key: Security__IpHashSalt
+        generateValue: true

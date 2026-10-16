@@ -31,6 +31,18 @@ public sealed class EmbeddingOptions
 
     public double MaxRetryDelaySeconds { get; set; } = 60;
 
+    /// <summary>
+    /// Prepended to a search query before it is embedded. Empty for models without task instructions (<c>gemini-embedding-001</c>);
+    /// EmbeddingGemma expects <c>"task: search result | query: "</c>.
+    /// </summary>
+    public string QueryPrefix { get; set; } = "";
+
+    /// <summary>
+    /// Prepended to every chunk before it is embedded (EmbeddingGemma: <c>"title: none | text: "</c>; the chunk already starts with
+    /// its title line). Part of the document hash, so changing it re-indexes everything.
+    /// </summary>
+    public string DocumentPrefix { get; set; } = "";
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey) && !string.IsNullOrWhiteSpace(BaseUrl);
 
     public static bool IsValid(EmbeddingOptions o) =>
@@ -48,11 +60,12 @@ public sealed class KnowledgeOptions
 
     /// <summary>
     /// Cosine similarity (1 = same direction) the best semantic hit must reach. Below it, and with no strong lexical hit either,
-    /// the search answers "nothing relevant". 0.60 is the value measured on the real model (<c>gemini-embedding-001</c>, 768 d): the
-    /// best hit of every answerable probe question scored 0.62 or more, and most unanswerable ones 0.45 to 0.58 (ADR-016). Retune
-    /// it with the retrieval evals whenever the model, the dimensions or the documents change.
+    /// the search answers "nothing relevant". 0.63 is the value measured on the real model (<c>gemini-embedding-001</c>, 768 d) and the
+    /// 120 English documents: the best hit of every one of the 198 answerable retrieval questions scored 0.64 or more, and 10 of the
+    /// 14 unanswerable ones stay below it (ADR-016, ADR-018). Retune it with the retrieval evals whenever the model, the dimensions
+    /// or the documents change.
     /// </summary>
-    public double MinSemanticSimilarity { get; set; } = 0.60;
+    public double MinSemanticSimilarity { get; set; } = 0.63;
 
     /// <summary>
     /// <c>ts_rank</c> the best lexical hit must reach to count as relevant without a good semantic hit (an exact amount, a phone

@@ -1,9 +1,8 @@
 # Retrieval eval (no model, SPEC 12 "Evals de RAG"): `dotnet run --project evals/Chatbot.Evals -- --retrieval`.
 # Each question is searched with KnowledgeSearch in the knowledge base of its niche. `expectSources` are document slugs
-# (file name without .md): the question passes when a chunk of one of them is in the top 4. The language pair
-# (question language -> language of the expected document) is worked out from the documents, so es->en and en->es
-# are the cross-language ones. `unanswerable: true` questions have no document: they only measure the relevance
-# threshold (informational, not a pass/fail).
+# (file name without .md): the question passes when a chunk of one of them is in the top 4. The demo is English only, so
+# every question and document is in English (en->en). `unanswerable: true` questions have no document: they only measure
+# the relevance threshold (informational, not a pass/fail).
 
 # ---- dental ----
 
@@ -11,19 +10,19 @@
   niche: dental
   language: en
   question: "How much is the late cancellation fee?"
-  expectSources: [cancelacion-y-no-show]
+  expectSources: [cancellation-and-no-show]
 
-- id: ret-d-q02-es
+- id: ret-d-q02-en
   niche: dental
-  language: es
-  question: "¿Cuánto es el cargo si no me presento a mi turno y no avisé?"
-  expectSources: [cancelacion-y-no-show]
+  language: en
+  question: "How much is the charge if I miss my appointment and didn't let you know?"
+  expectSources: [cancellation-and-no-show]
 
 - id: ret-d-q03-en
   niche: dental
   language: en
   question: "What phone number do I call to cancel an appointment?"
-  expectSources: [cancelacion-y-no-show]
+  expectSources: [cancellation-and-no-show]
 
 - id: ret-d-q04-en
   niche: dental
@@ -31,22 +30,22 @@
   question: "How many times can I reschedule without a charge?"
   expectSources: [rescheduling-appointments]
 
-- id: ret-d-q05-es
+- id: ret-d-q05-en
   niche: dental
-  language: es
-  question: "¿Cuál es el copago con Cigna DHMO?"
-  expectSources: [seguros-y-verificacion]
+  language: en
+  question: "What is the copay with Cigna DHMO?"
+  expectSources: [insurance-and-verification]
 
 - id: ret-d-q06-en
   niche: dental
   language: en
   question: "How long does the front desk take to verify my insurance?"
-  expectSources: [seguros-y-verificacion]
+  expectSources: [insurance-and-verification]
 
-- id: ret-d-q07-es
+- id: ret-d-q07-en
   niche: dental
-  language: es
-  question: "¿Puedo pagar un tratamiento grande en cuotas mensuales?"
+  language: en
+  question: "Can I pay for a large treatment in monthly installments?"
   expectSources: [payment-methods-and-financing]
 
 - id: ret-d-q08-en
@@ -55,23 +54,23 @@
   question: "How early should I arrive for my first visit?"
   expectSources: [first-visit-checklist]
 
-- id: ret-d-q09-es
+- id: ret-d-q09-en
   niche: dental
-  language: es
-  question: "¿Cuándo debe ir mi hijo por primera vez al dentista?"
+  language: en
+  question: "When should my child first see the dentist?"
   expectSources: [pediatric-visits-policy]
 
-- id: ret-d-q10-es
+- id: ret-d-q10-en
   niche: dental
-  language: es
-  question: "¿Cuánto tiempo debo evitar el café después de blanquearme los dientes?"
-  expectSources: [cuidados-tras-blanqueamiento]
+  language: en
+  question: "How long should I avoid coffee after whitening my teeth?"
+  expectSources: [whitening-aftercare]
 
 - id: ret-d-q11-en
   niche: dental
   language: en
   question: "When can I eat normally after a filling?"
-  expectSources: [cuidados-tras-obturacion]
+  expectSources: [filling-aftercare]
 
 - id: ret-d-q12-en
   niche: dental
@@ -79,28 +78,28 @@
   question: "How long must I avoid straws after an extraction?"
   expectSources: [post-extraction-care]
 
-- id: ret-d-q13-es
+- id: ret-d-q13-en
   niche: dental
-  language: es
-  question: "¿Cuál es el número de urgencias fuera de horario?"
-  expectSources: [urgencias-dentales-y-fuera-de-horario]
+  language: en
+  question: "What is the after-hours emergency number?"
+  expectSources: [dental-emergencies-and-after-hours]
 
 - id: ret-d-q14-en
   niche: dental
   language: en
   question: "Are dental X-rays safe?"
-  expectSources: [radiografias-y-embarazo]
+  expectSources: [x-rays-and-pregnancy]
 
-- id: ret-d-q15-es
+- id: ret-d-q15-en
   niche: dental
-  language: es
-  question: "¿Debo posponer las radiografías durante el embarazo?"
-  expectSources: [radiografias-y-embarazo]
+  language: en
+  question: "Should I postpone X-rays during pregnancy?"
+  expectSources: [x-rays-and-pregnancy]
 
-- id: ret-d-q16-es
+- id: ret-d-q16-en
   niche: dental
-  language: es
-  question: "¿Qué señal puedo usar si me angustio durante el tratamiento?"
+  language: en
+  question: "What signal can I use if I start to feel anxious during treatment?"
   expectSources: [sedation-and-anxiety-options]
 
 - id: ret-d-q17-en
@@ -113,24 +112,24 @@
   niche: dental
   language: en
   question: "How often should I get a professional cleaning?"
-  expectSources: [frecuencia-de-limpieza-e-higiene]
+  expectSources: [cleaning-frequency-and-hygiene]
 
-- id: ret-d-q19-es
+- id: ret-d-q19-en
   niche: dental
-  language: es
-  question: "¿En cuánto tiempo puedo pedir una copia de mi historia clínica?"
-  expectSources: [privacidad-de-historias-clinicas]
+  language: en
+  question: "How long does it take to get a copy of my medical records?"
+  expectSources: [patient-records-privacy]
 
 - id: ret-d-q20-en
   niche: dental
   language: en
   question: "Are you open on December 24?"
-  expectSources: [horarios-y-feriados]
+  expectSources: [hours-and-holidays]
 
-- id: ret-d-q21-es
+- id: ret-d-q21-en
   niche: dental
-  language: es
-  question: "¿Cuánto tiempo cubre la garantía de un empaste?"
+  language: en
+  question: "How long does the warranty on a filling last?"
   expectSources: [warranty-fillings-whitening]
 
 - id: ret-d-q22-en
@@ -145,10 +144,10 @@
   question: "Do you offer root canal treatment?"
   unanswerable: true
 
-- id: ret-d-un02-es
+- id: ret-d-un02-en
   niche: dental
-  language: es
-  question: "¿Tienen una guardería para niños mientras me atienden?"
+  language: en
+  question: "Do you have a daycare for children while I am being treated?"
   unanswerable: true
 
 - id: ret-d-un03-en
@@ -157,10 +156,10 @@
   question: "Can I pay with Bitcoin?"
   unanswerable: true
 
-- id: ret-d-un04-es
+- id: ret-d-un04-en
   niche: dental
-  language: es
-  question: "¿Ofrecen Botox u otros tratamientos de dermatología?"
+  language: en
+  question: "Do you offer Botox or other dermatology treatments?"
   unanswerable: true
 
 - id: ret-d-un05-en
@@ -171,40 +170,40 @@
 
 # ---- realestate ----
 
-- id: ret-r-q01-es
+- id: ret-r-q01-en
   niche: realestate
-  language: es
-  question: "¿Cuánto puede pesar una mascota para vivir en uno de sus alquileres?"
-  expectSources: [politica-mascotas]
+  language: en
+  question: "How much can a pet weigh to live in one of your rentals?"
+  expectSources: [pet-policy]
 
 - id: ret-r-q02-en
   niche: realestate
   language: en
   question: "How much extra deposit do I pay per pet?"
-  expectSources: [politica-mascotas]
+  expectSources: [pet-policy]
 
-- id: ret-r-q03-es
+- id: ret-r-q03-en
   niche: realestate
-  language: es
-  question: "¿Qué ingresos mensuales necesito para alquilar?"
-  expectSources: [requisitos-alquiler]
+  language: en
+  question: "What monthly income do I need to rent?"
+  expectSources: [rental-requirements]
 
 - id: ret-r-q04-en
   niche: realestate
   language: en
   question: "Which insurer issues the caución policy?"
-  expectSources: [requisitos-alquiler]
+  expectSources: [rental-requirements]
 
-- id: ret-r-q05-es
+- id: ret-r-q05-en
   niche: realestate
-  language: es
-  question: "¿En cuánto tiempo me devuelven el depósito?"
-  expectSources: [deposito-y-costos-iniciales]
+  language: en
+  question: "How long does it take for you to refund the deposit?"
+  expectSources: [deposit-and-upfront-costs]
 
-- id: ret-r-q06-es
+- id: ret-r-q06-en
   niche: realestate
-  language: es
-  question: "¿Cada cuánto sube el alquiler?"
+  language: en
+  question: "How often does the rent go up?"
   expectSources: [rent-adjustments]
 
 - id: ret-r-q07-en
@@ -217,54 +216,54 @@
   niche: realestate
   language: en
   question: "When are the monthly building expenses (expensas) due?"
-  expectSources: [expensas-explicadas]
+  expectSources: [building-fees-explained]
 
-- id: ret-r-q09-es
+- id: ret-r-q09-en
   niche: realestate
-  language: es
-  question: "¿Cuánto son los honorarios que paga el inquilino?"
-  expectSources: [honorarios-inmobiliaria]
+  language: en
+  question: "How much are the agency fees the tenant pays?"
+  expectSources: [agency-fees]
 
 - id: ret-r-q10-en
   niche: realestate
   language: en
   question: "I want to leave after 4 months. What is the penalty?"
-  expectSources: [duracion-y-rescision]
+  expectSources: [lease-length-and-early-termination]
 
-- id: ret-r-q11-es
+- id: ret-r-q11-en
   niche: realestate
-  language: es
-  question: "¿Cuántas personas pueden ir a una visita?"
-  expectSources: [visitas-y-cancelaciones]
+  language: en
+  question: "How many people can come to a viewing?"
+  expectSources: [viewings-and-cancellations]
 
 - id: ret-r-q12-en
   niche: realestate
   language: en
   question: "How much notice do I need to cancel a visit?"
-  expectSources: [visitas-y-cancelaciones]
+  expectSources: [viewings-and-cancellations]
 
-- id: ret-r-q13-es
+- id: ret-r-q13-en
   niche: realestate
-  language: es
-  question: "¿Cuánto son los sellos al comprar?"
-  expectSources: [proceso-de-compra]
+  language: en
+  question: "How much are the stamp duties (sellos) when buying?"
+  expectSources: [buying-process]
 
 - id: ret-r-q14-en
   niche: realestate
   language: en
   question: "What is the transfer tax (ITI) when buying a property?"
-  expectSources: [proceso-de-compra]
+  expectSources: [buying-process]
 
-- id: ret-r-q15-es
+- id: ret-r-q15-en
   niche: realestate
-  language: es
-  question: "¿Cuánto dura la preaprobación hipotecaria?"
-  expectSources: [hipotecas-y-preaprobacion]
+  language: en
+  question: "How long does mortgage preapproval last?"
+  expectSources: [mortgages-and-preapproval]
 
-- id: ret-r-q16-es
+- id: ret-r-q16-en
   niche: realestate
-  language: es
-  question: "¿Cuánto efectivo en dólares puedo pagar por operación?"
+  language: en
+  question: "How much cash in US dollars can I pay per transaction?"
   expectSources: [foreign-buyers-and-usd-payments]
 
 - id: ret-r-q17-en
@@ -273,10 +272,10 @@
   question: "How soon must I sign the inventory after moving into a furnished unit?"
   expectSources: [furnished-and-inventory]
 
-- id: ret-r-q18-es
+- id: ret-r-q18-en
   niche: realestate
-  language: es
-  question: "¿Quién paga las reparaciones chicas?"
+  language: en
+  question: "Who pays for the small repairs?"
   expectSources: [maintenance-responsibilities]
 
 - id: ret-r-q19-en
@@ -285,10 +284,10 @@
   question: "Can I list the apartment on Airbnb while I travel?"
   expectSources: [subletting-and-short-term-rentals]
 
-- id: ret-r-q20-es
+- id: ret-r-q20-en
   niche: realestate
-  language: es
-  question: "¿A qué hora puedo retirar las llaves el día de inicio?"
+  language: en
+  question: "What time can I pick up the keys on my start date?"
   expectSources: [move-in-and-keys]
 
 - id: ret-r-q21-en
@@ -297,10 +296,10 @@
   question: "How many days do I have to transfer the AySA water account to my name?"
   expectSources: [utilities-transfer]
 
-- id: ret-r-q22-es
+- id: ret-r-q22-en
   niche: realestate
-  language: es
-  question: "¿Con cuánta anticipación avisa el dueño antes de una visita de compradores?"
+  language: en
+  question: "How far in advance does the owner notify me before a buyers' viewing?"
   expectSources: [tenant-rights-when-selling]
 
 - id: ret-r-q23-en
@@ -309,10 +308,10 @@
   question: "What time does the building gym open?"
   expectSources: [amenities-accessibility-and-work-use]
 
-- id: ret-r-q24-es
+- id: ret-r-q24-en
   niche: realestate
-  language: es
-  question: "¿Puedo trabajar desde casa en el alquiler?"
+  language: en
+  question: "Can I work from home in the rental?"
   expectSources: [amenities-accessibility-and-work-use]
 
 - id: ret-r-un01-en
@@ -321,10 +320,10 @@
   question: "Do your rentals include a parking space or garage?"
   unanswerable: true
 
-- id: ret-r-un02-es
+- id: ret-r-un02-en
   niche: realestate
-  language: es
-  question: "¿Cuánto es el ABL de la propiedad?"
+  language: en
+  question: "How much is the ABL of the property?"
   unanswerable: true
 
 - id: ret-r-un03-en
@@ -333,10 +332,10 @@
   question: "Do you offer a moving truck service for my move?"
   unanswerable: true
 
-- id: ret-r-un04-es
+- id: ret-r-un04-en
   niche: realestate
-  language: es
-  question: "¿Qué escuelas hay cerca del loft de San Telmo?"
+  language: en
+  question: "Which schools are near the San Telmo loft?"
   unanswerable: true
 
 - id: ret-r-un05-en
@@ -351,73 +350,73 @@
   niche: restaurant
   language: en
   question: "How far from the restaurant do you deliver?"
-  expectSources: [zonas-tiempos-y-cargos-de-delivery]
+  expectSources: [delivery-zones-times-and-fees]
 
-- id: ret-n-q03-es
+- id: ret-n-q03-en
   niche: restaurant
-  language: es
-  question: "¿Cuánto cuesta el envío a una dirección a unos 1,5 km?"
-  expectSources: [zonas-tiempos-y-cargos-de-delivery]
+  language: en
+  question: "How much does delivery cost to an address about 1.5 km away?"
+  expectSources: [delivery-zones-times-and-fees]
 
 - id: ret-n-q05-en
   niche: restaurant
   language: en
   question: "From what order total is delivery free?"
-  expectSources: [zonas-tiempos-y-cargos-de-delivery]
+  expectSources: [delivery-zones-times-and-fees]
 
-- id: ret-n-q07-es
+- id: ret-n-q07-en
   niche: restaurant
-  language: es
-  question: "¿La masa sin TACC se cocina en un horno aparte?"
-  expectSources: [masa-sin-tacc-y-contaminacion-cruzada]
+  language: en
+  question: "Is the gluten-free dough baked in a separate oven?"
+  expectSources: [gluten-free-crust-and-cross-contact]
 
 - id: ret-n-q09-en
   niche: restaurant
   language: en
   question: "What tip is suggested for delivery?"
-  expectSources: [pagos-y-propinas]
+  expectSources: [payments-and-tips]
 
-- id: ret-n-q11-es
+- id: ret-n-q11-en
   niche: restaurant
-  language: es
-  question: "¿Cuánto tiempo tengo para cancelar un pedido sin cargo?"
-  expectSources: [modificar-o-cancelar-pedido]
+  language: en
+  question: "How long do I have to cancel an order at no charge?"
+  expectSources: [change-or-cancel-an-order]
 
 - id: ret-n-q13-en
   niche: restaurant
   language: en
   question: "How far in advance do I need to order catering?"
-  expectSources: [catering-y-bandejas-para-fiestas]
+  expectSources: [catering-and-party-platters]
 
-- id: ret-n-q15-es
+- id: ret-n-q15-en
   niche: restaurant
-  language: es
-  question: "¿Qué seña piden para reservar catering?"
-  expectSources: [catering-y-bandejas-para-fiestas]
+  language: en
+  question: "What deposit do you ask for to book catering?"
+  expectSources: [catering-and-party-platters]
 
 - id: ret-n-q17-en
   niche: restaurant
   language: en
   question: "When is the last delivery order accepted?"
-  expectSources: [horarios-y-feriados]
+  expectSources: [hours-and-holidays]
 
-- id: ret-n-q19-es
+- id: ret-n-q19-en
   niche: restaurant
-  language: es
-  question: "¿Cuántos puntos necesito para un postre gratis?"
-  expectSources: [programa-de-fidelidad]
+  language: en
+  question: "How many points do I need for a free dessert?"
+  expectSources: [loyalty-program]
 
 - id: ret-n-q21-en
   niche: restaurant
   language: en
   question: "Can I book a table for a group by WhatsApp?"
-  expectSources: [grupos-grandes-y-pedidos-de-grupo]
+  expectSources: [large-groups-and-group-orders]
 
-- id: ret-n-q23-es
+- id: ret-n-q23-en
   niche: restaurant
-  language: es
-  question: "¿Cuánto tiempo recalento una pizza en el horno?"
-  expectSources: [recalentar-y-guardar-sobras]
+  language: en
+  question: "How long do I reheat a pizza in the oven?"
+  expectSources: [reheating-and-storing-leftovers]
 
 - id: ret-n-q25-en
   niche: restaurant
@@ -425,10 +424,10 @@
   question: "Do you use nuts in your recipes?"
   expectSources: [allergens-and-nut-policy]
 
-- id: ret-n-q27-es
+- id: ret-n-q27-en
   niche: restaurant
-  language: es
-  question: "¿Qué descuento tienen los pedidos para retirar?"
+  language: en
+  question: "What discount do pickup orders get?"
   expectSources: [pickup-policy]
 
 - id: ret-n-q29-en
@@ -437,10 +436,10 @@
   question: "What do I get if my delivery arrives late?"
   expectSources: [late-or-wrong-order-refunds]
 
-- id: ret-n-q31-es
+- id: ret-n-q31-en
   niche: restaurant
-  language: es
-  question: "¿Cuántos invitados entran en el salón privado?"
+  language: en
+  question: "How many guests fit in the private room?"
   expectSources: [private-events-and-birthdays]
 
 - id: ret-n-q33-en
@@ -449,10 +448,10 @@
   question: "Do you have high chairs for kids?"
   expectSources: [kids-menu-and-high-chairs]
 
-- id: ret-n-q35-es
+- id: ret-n-q35-en
   niche: restaurant
-  language: es
-  question: "¿Quién les provee la mozzarella fresca?"
+  language: en
+  question: "Who supplies your fresh mozzarella?"
   expectSources: [ingredient-sourcing]
 
 - id: ret-n-q37-en
@@ -461,10 +460,10 @@
   question: "What amounts do gift cards come in?"
   expectSources: [gift-cards]
 
-- id: ret-n-q39-es
+- id: ret-n-q39-en
   niche: restaurant
-  language: es
-  question: "¿Cuándo está abierto el patio?"
+  language: en
+  question: "When is the patio open?"
   expectSources: [dog-friendly-patio]
 
 - id: ret-n-un01-en
@@ -473,10 +472,10 @@
   question: "Do you offer valet parking?"
   unanswerable: true
 
-- id: ret-n-un02-es
+- id: ret-n-un02-en
   niche: restaurant
-  language: es
-  question: "¿Cómo se llama el chef principal?"
+  language: en
+  question: "What is the name of the head chef?"
   unanswerable: true
 
 - id: ret-n-un03-en
@@ -485,8 +484,806 @@
   question: "Can I pay for my order in Bitcoin?"
   unanswerable: true
 
-- id: ret-n-un04-es
+- id: ret-n-un04-en
   niche: restaurant
-  language: es
-  question: "¿Hay franquicias disponibles para abrir un Luigi's en otra ciudad?"
+  language: en
+  question: "Are franchises available to open a Luigi's in another city?"
   unanswerable: true
+
+# ---- dental: generated English documents ----
+
+- id: ret-d-g01-en
+  niche: dental
+  language: en
+  question: "How much does a teeth cleaning cost?"
+  expectSources: [price-list-and-treatment-times]
+
+- id: ret-d-g02-en
+  niche: dental
+  language: en
+  question: "How much is a children's check-up for my 8-year-old?"
+  expectSources: [price-list-and-treatment-times]
+
+- id: ret-d-g03-en
+  niche: dental
+  language: en
+  question: "How long does a fluoride treatment take?"
+  expectSources: [fluoride-treatment]
+
+- id: ret-d-g04-en
+  niche: dental
+  language: en
+  question: "Can I eat right after getting fluoride?"
+  expectSources: [fluoride-treatment]
+
+- id: ret-d-g05-en
+  niche: dental
+  language: en
+  question: "How far in advance can I book an appointment?"
+  expectSources: [how-to-book-an-appointment]
+
+- id: ret-d-g06-en
+  niche: dental
+  language: en
+  question: "What is the latest time I can start a 60-minute visit on Saturday?"
+  expectSources: [how-to-book-an-appointment]
+
+- id: ret-d-g07-en
+  niche: dental
+  language: en
+  question: "When will you send me a reminder for my visit?"
+  expectSources: [appointment-reminders]
+
+- id: ret-d-g08-en
+  niche: dental
+  language: en
+  question: "How do I confirm my appointment after I get the reminder?"
+  expectSources: [appointment-reminders]
+
+- id: ret-d-g09-en
+  niche: dental
+  language: en
+  question: "What if I arrive 10 minutes late to my appointment?"
+  expectSources: [late-arrivals]
+
+- id: ret-d-g10-en
+  niche: dental
+  language: en
+  question: "Does arriving late count as a cancellation?"
+  expectSources: [late-arrivals]
+
+- id: ret-d-g11-en
+  niche: dental
+  language: en
+  question: "Can I come in without an appointment?"
+  expectSources: [walk-in-visits]
+
+- id: ret-d-g12-en
+  niche: dental
+  language: en
+  question: "How long might I wait if I walk in without booking?"
+  expectSources: [walk-in-visits]
+
+- id: ret-d-g13-en
+  niche: dental
+  language: en
+  question: "How long do I have to dispute a charge?"
+  expectSources: [billing-questions-and-refunds]
+
+- id: ret-d-g14-en
+  niche: dental
+  language: en
+  question: "How quickly will you reply to a billing question?"
+  expectSources: [billing-questions-and-refunds]
+
+- id: ret-d-g15-en
+  niche: dental
+  language: en
+  question: "What temperature do you sterilize your instruments at?"
+  expectSources: [infection-control-and-sterilization]
+
+- id: ret-d-g16-en
+  niche: dental
+  language: en
+  question: "Do you reuse needles between patients?"
+  expectSources: [infection-control-and-sterilization]
+
+- id: ret-d-g17-en
+  niche: dental
+  language: en
+  question: "Should I brush my teeth right after drinking soda?"
+  expectSources: [diet-and-tooth-erosion]
+
+- id: ret-d-g18-en
+  niche: dental
+  language: en
+  question: "What is the best drink to have between meals?"
+  expectSources: [diet-and-tooth-erosion]
+
+- id: ret-d-g19-en
+  niche: dental
+  language: en
+  question: "How long do you keep items someone left behind?"
+  expectSources: [lost-and-found]
+
+- id: ret-d-g20-en
+  niche: dental
+  language: en
+  question: "I left my glasses at the clinic, what should I do?"
+  expectSources: [lost-and-found]
+
+- id: ret-d-g21-en
+  niche: dental
+  language: en
+  question: "How quickly will my preferred name be updated in your records?"
+  expectSources: [preferred-name-and-pronouns]
+
+- id: ret-d-g22-en
+  niche: dental
+  language: en
+  question: "Can I still use my legal name for insurance if I go by another name?"
+  expectSources: [preferred-name-and-pronouns]
+
+- id: ret-d-g23-en
+  niche: dental
+  language: en
+  question: "How quickly do you reply to a complaint?"
+  expectSources: [feedback-and-complaints]
+
+- id: ret-d-g24-en
+  niche: dental
+  language: en
+  question: "Can I ask to meet the lead dentist about a concern?"
+  expectSources: [feedback-and-complaints]
+
+- id: ret-d-g25-en
+  niche: dental
+  language: en
+  question: "What is an annual maximum on a dental plan?"
+  expectSources: [annual-maximum-and-benefit-year]
+
+- id: ret-d-g26-en
+  niche: dental
+  language: en
+  question: "If my plan's maximum is $1,500 and $1,200 is used, how much is left?"
+  expectSources: [annual-maximum-and-benefit-year]
+
+- id: ret-d-g27-en
+  niche: dental
+  language: en
+  question: "Who does the teeth cleaning at my visit?"
+  expectSources: [who-you-will-see]
+
+- id: ret-d-g28-en
+  niche: dental
+  language: en
+  question: "Who decides my treatment plan?"
+  expectSources: [who-you-will-see]
+
+- id: ret-d-g29-en
+  niche: dental
+  language: en
+  question: "Can I pause my treatment plan between visits?"
+  expectSources: [multi-visit-treatment-planning]
+
+- id: ret-d-g30-en
+  niche: dental
+  language: en
+  question: "Will I get a price estimate before a treatment that needs several visits?"
+  expectSources: [multi-visit-treatment-planning]
+
+- id: ret-d-g31-en
+  niche: dental
+  language: en
+  question: "How long can I stay on the waitlist?"
+  expectSources: [waitlist-for-earlier-openings]
+
+- id: ret-d-g32-en
+  niche: dental
+  language: en
+  question: "How long do I have to reply when a slot opens up?"
+  expectSources: [waitlist-for-earlier-openings]
+
+- id: ret-d-g33-en
+  niche: dental
+  language: en
+  question: "Does the whitening warranty cover staining from tobacco?"
+  expectSources: [smoking-and-oral-health]
+
+- id: ret-d-g34-en
+  niche: dental
+  language: en
+  question: "Where can I get help to quit smoking?"
+  expectSources: [smoking-and-oral-health]
+
+- id: ret-d-g35-en
+  niche: dental
+  language: en
+  question: "Can you refill my prescription through the chat?"
+  expectSources: [prescription-refill-requests]
+
+- id: ret-d-g36-en
+  niche: dental
+  language: en
+  question: "How long does the dentist take to review a refill request?"
+  expectSources: [prescription-refill-requests]
+
+- id: ret-d-g37-en
+  niche: dental
+  language: en
+  question: "What temperature counts as a fever if I need to cancel?"
+  expectSources: [sick-on-visit-day]
+
+- id: ret-d-g38-en
+  niche: dental
+  language: en
+  question: "Can I book a new visit after I have been sick?"
+  expectSources: [sick-on-visit-day]
+
+- id: ret-d-g39-en
+  niche: dental
+  language: en
+  question: "How will I know if you close because of the weather?"
+  expectSources: [weather-closures]
+
+- id: ret-d-g40-en
+  niche: dental
+  language: en
+  question: "Will I be charged if the clinic closes because of a storm?"
+  expectSources: [weather-closures]
+
+- id: ret-d-g41-en
+  niche: dental
+  language: en
+  question: "Is Wi-Fi free in your waiting area?"
+  expectSources: [waiting-area-and-comfort]
+
+- id: ret-d-g42-en
+  niche: dental
+  language: en
+  question: "Can a friend wait with me during my visit?"
+  expectSources: [waiting-area-and-comfort]
+
+- id: ret-d-g43-en
+  niche: dental
+  language: en
+  question: "Is Smile Dental Clinic a general and family dentistry practice?"
+  expectSources: [about-smile-dental-clinic]
+
+- id: ret-d-g44-en
+  niche: dental
+  language: en
+  question: "Do you offer braces or dental implants?"
+  expectSources: [about-smile-dental-clinic]
+
+# ---- realestate: generated English documents ----
+
+- id: ret-r-g01-en
+  niche: realestate
+  language: en
+  question: "What are the quiet hours on weekdays?"
+  expectSources: [noise-and-quiet-hours]
+
+- id: ret-r-g02-en
+  niche: realestate
+  language: en
+  question: "After what time at night do neighbors expect silence during the week?"
+  expectSources: [noise-and-quiet-hours]
+
+- id: ret-r-g03-en
+  niche: realestate
+  language: en
+  question: "How far in advance do I need to book the rooftop terrace?"
+  expectSources: [shared-spaces-and-bookings]
+
+- id: ret-r-g04-en
+  niche: realestate
+  language: en
+  question: "Until what time can I use the grill area?"
+  expectSources: [shared-spaces-and-bookings]
+
+- id: ret-r-g05-en
+  niche: realestate
+  language: en
+  question: "What are the laundry room opening hours?"
+  expectSources: [storage-units-and-laundry-rooms]
+
+- id: ret-r-g06-en
+  niche: realestate
+  language: en
+  question: "Can I keep a gas cylinder in the storage unit?"
+  expectSources: [storage-units-and-laundry-rooms]
+
+- id: ret-r-g07-en
+  niche: realestate
+  language: en
+  question: "How long does it take to install internet?"
+  expectSources: [internet-and-cable-tv]
+
+- id: ret-r-g08-en
+  niche: realestate
+  language: en
+  question: "Is internet included in the rent?"
+  expectSources: [internet-and-cable-tv]
+
+- id: ret-r-g09-en
+  niche: realestate
+  language: en
+  question: "When can I put my garbage bags out?"
+  expectSources: [garbage-and-recycling]
+
+- id: ret-r-g10-en
+  niche: realestate
+  language: en
+  question: "How often is the bin room cleaned?"
+  expectSources: [garbage-and-recycling]
+
+- id: ret-r-g11-en
+  niche: realestate
+  language: en
+  question: "How much notice do I need to give before approved works?"
+  expectSources: [renovations-and-alterations]
+
+- id: ret-r-g12-en
+  niche: realestate
+  language: en
+  question: "What hours can approved works be done on Saturdays?"
+  expectSources: [renovations-and-alterations]
+
+- id: ret-r-g13-en
+  niche: realestate
+  language: en
+  question: "What does contents insurance cover?"
+  expectSources: [tenant-contents-insurance]
+
+- id: ret-r-g14-en
+  niche: realestate
+  language: en
+  question: "Is a contents policy required to rent with you?"
+  expectSources: [tenant-contents-insurance]
+
+- id: ret-r-g15-en
+  niche: realestate
+  language: en
+  question: "How long does a virtual tour last?"
+  expectSources: [virtual-tours]
+
+- id: ret-r-g16-en
+  niche: realestate
+  language: en
+  question: "Are video tours available on Sundays?"
+  expectSources: [virtual-tours]
+
+- id: ret-r-g17-en
+  niche: realestate
+  language: en
+  question: "What should I check during a viewing?"
+  expectSources: [viewing-checklist]
+
+- id: ret-r-g18-en
+  niche: realestate
+  language: en
+  question: "How long should I run the hot water when I visit an apartment?"
+  expectSources: [viewing-checklist]
+
+- id: ret-r-g19-en
+  niche: realestate
+  language: en
+  question: "How much does an independent inspection cost?"
+  expectSources: [independent-property-inspection]
+
+- id: ret-r-g20-en
+  niche: realestate
+  language: en
+  question: "When should I book a home inspection before buying?"
+  expectSources: [independent-property-inspection]
+
+- id: ret-r-g21-en
+  niche: realestate
+  language: en
+  question: "When is the rent due each month?"
+  expectSources: [rent-due-dates-and-late-payments]
+
+- id: ret-r-g22-en
+  niche: realestate
+  language: en
+  question: "How much is the late charge if I pay after the 5th?"
+  expectSources: [rent-due-dates-and-late-payments]
+
+- id: ret-r-g23-en
+  niche: realestate
+  language: en
+  question: "What documents does a company need to rent a unit?"
+  expectSources: [renting-for-a-company]
+
+- id: ret-r-g24-en
+  niche: realestate
+  language: en
+  question: "How long must a company's bond insurance last?"
+  expectSources: [renting-for-a-company]
+
+- id: ret-r-g25-en
+  niche: realestate
+  language: en
+  question: "How long is the signing link valid?"
+  expectSources: [electronic-contract-signing]
+
+- id: ret-r-g26-en
+  niche: realestate
+  language: en
+  question: "When will I get my signed contract by email?"
+  expectSources: [electronic-contract-signing]
+
+- id: ret-r-g27-en
+  niche: realestate
+  language: en
+  question: "How long do you keep the documents of a rejected application?"
+  expectSources: [document-privacy]
+
+- id: ret-r-g28-en
+  niche: realestate
+  language: en
+  question: "Can I ask what personal data you hold about me?"
+  expectSources: [document-privacy]
+
+- id: ret-r-g29-en
+  niche: realestate
+  language: en
+  question: "How quickly do you confirm that you received a complaint?"
+  expectSources: [complaints-and-disputes]
+
+- id: ret-r-g30-en
+  niche: realestate
+  language: en
+  question: "How long until you propose a solution to my complaint?"
+  expectSources: [complaints-and-disputes]
+
+- id: ret-r-g31-en
+  niche: realestate
+  language: en
+  question: "What are your office hours?"
+  expectSources: [contact-and-office-hours]
+
+- id: ret-r-g32-en
+  niche: realestate
+  language: en
+  question: "Will a message I send on a Sunday be answered?"
+  expectSources: [contact-and-office-hours]
+
+- id: ret-r-g33-en
+  niche: realestate
+  language: en
+  question: "How soon does my listing go live after I sign?"
+  expectSources: [selling-your-property-with-us]
+
+- id: ret-r-g34-en
+  niche: realestate
+  language: en
+  question: "What is the seller's fee?"
+  expectSources: [selling-your-property-with-us]
+
+- id: ret-r-g35-en
+  niche: realestate
+  language: en
+  question: "Which neighborhoods are in the north of the city?"
+  expectSources: [neighborhoods-we-cover]
+
+- id: ret-r-g36-en
+  niche: realestate
+  language: en
+  question: "Where are your loft listings located?"
+  expectSources: [neighborhoods-we-cover]
+
+- id: ret-r-g37-en
+  niche: realestate
+  language: en
+  question: "What is a PH?"
+  expectSources: [property-types-explained]
+
+- id: ret-r-g38-en
+  niche: realestate
+  language: en
+  question: "How many rooms do your houses have?"
+  expectSources: [property-types-explained]
+
+- id: ret-r-g39-en
+  niche: realestate
+  language: en
+  question: "How often is pest control done in the common areas?"
+  expectSources: [pest-control-and-cleaning]
+
+- id: ret-r-g40-en
+  niche: realestate
+  language: en
+  question: "How much notice do I get before a pest treatment?"
+  expectSources: [pest-control-and-cleaning]
+
+- id: ret-r-g41-en
+  niche: realestate
+  language: en
+  question: "How often are gas installations inspected?"
+  expectSources: [building-safety-checks]
+
+- id: ret-r-g42-en
+  niche: realestate
+  language: en
+  question: "How much notice do you give before a safety check enters my unit?"
+  expectSources: [building-safety-checks]
+
+- id: ret-r-g43-en
+  niche: realestate
+  language: en
+  question: "Can I smoke on the rooftop terrace?"
+  expectSources: [smoking-and-common-area-rules]
+
+- id: ret-r-g44-en
+  niche: realestate
+  language: en
+  question: "After how long are items left in the halls removed?"
+  expectSources: [smoking-and-common-area-rules]
+
+# ---- restaurant: generated English documents ----
+
+- id: ret-n-g01-en
+  niche: restaurant
+  language: en
+  question: "Do I need to download an app to place an order?"
+  expectSources: [placing-an-order-on-whatsapp]
+
+- id: ret-n-g02-en
+  niche: restaurant
+  language: en
+  question: "Can I order without installing anything on my phone?"
+  expectSources: [placing-an-order-on-whatsapp]
+
+- id: ret-n-g03-en
+  niche: restaurant
+  language: en
+  question: "Will you message me when my order leaves for delivery?"
+  expectSources: [order-status-updates]
+
+- id: ret-n-g04-en
+  niche: restaurant
+  language: en
+  question: "Do you keep me updated on WhatsApp while my food is on its way?"
+  expectSources: [order-status-updates]
+
+- id: ret-n-g05-en
+  niche: restaurant
+  language: en
+  question: "Is the main entrance accessible by wheelchair?"
+  expectSources: [accessibility-and-wheelchair-access]
+
+- id: ret-n-g06-en
+  niche: restaurant
+  language: en
+  question: "How wide is the door for guests using a wheelchair?"
+  expectSources: [accessibility-and-wheelchair-access]
+
+- id: ret-n-g07-en
+  niche: restaurant
+  language: en
+  question: "Do you have a baby changing table?"
+  expectSources: [restrooms-and-baby-changing]
+
+- id: ret-n-g08-en
+  niche: restaurant
+  language: en
+  question: "Where can I change my baby's diaper at Luigi's?"
+  expectSources: [restrooms-and-baby-changing]
+
+- id: ret-n-g09-en
+  niche: restaurant
+  language: en
+  question: "How long do you keep items that guests leave behind?"
+  expectSources: [lost-and-found]
+
+- id: ret-n-g10-en
+  niche: restaurant
+  language: en
+  question: "I left my jacket at the restaurant, how long will you hold it?"
+  expectSources: [lost-and-found]
+
+- id: ret-n-g11-en
+  niche: restaurant
+  language: en
+  question: "How long can each device stay connected to the guest Wi-Fi?"
+  expectSources: [guest-wifi]
+
+- id: ret-n-g12-en
+  niche: restaurant
+  language: en
+  question: "Is there a time limit on your Wi-Fi per visit?"
+  expectSources: [guest-wifi]
+
+- id: ret-n-g13-en
+  niche: restaurant
+  language: en
+  question: "Can guests smoke on the patio?"
+  expectSources: [smoking-and-vaping-policy]
+
+- id: ret-n-g14-en
+  niche: restaurant
+  language: en
+  question: "How far from the entrance do I have to stand to vape?"
+  expectSources: [smoking-and-vaping-policy]
+
+- id: ret-n-g15-en
+  niche: restaurant
+  language: en
+  question: "How much does the Limonata cost?"
+  expectSources: [drinks-and-tap-water]
+
+- id: ret-n-g16-en
+  niche: restaurant
+  language: en
+  question: "Do you serve beer or wine?"
+  expectSources: [drinks-and-tap-water]
+
+- id: ret-n-g17-en
+  niche: restaurant
+  language: en
+  question: "Which dish on the menu is the spiciest?"
+  expectSources: [chili-flakes-and-spice-levels]
+
+- id: ret-n-g18-en
+  niche: restaurant
+  language: en
+  question: "Can I ask for extra chili flakes with my pizza?"
+  expectSources: [chili-flakes-and-spice-levels]
+
+- id: ret-n-g19-en
+  niche: restaurant
+  language: en
+  question: "Are your meals halal or kosher certified?"
+  expectSources: [halal-kosher-and-religious-diets]
+
+- id: ret-n-g20-en
+  niche: restaurant
+  language: en
+  question: "Does the Prosciutto & Mushroom pizza contain pork?"
+  expectSources: [halal-kosher-and-religious-diets]
+
+- id: ret-n-g21-en
+  niche: restaurant
+  language: en
+  question: "How often is the walk-in cooler temperature checked?"
+  expectSources: [food-safety-and-kitchen-hygiene]
+
+- id: ret-n-g22-en
+  niche: restaurant
+  language: en
+  question: "What temperature do you keep cold storage at?"
+  expectSources: [food-safety-and-kitchen-hygiene]
+
+- id: ret-n-g23-en
+  niche: restaurant
+  language: en
+  question: "Are your pizza boxes recyclable?"
+  expectSources: [packaging-and-recycling]
+
+- id: ret-n-g24-en
+  niche: restaurant
+  language: en
+  question: "Do you charge a fee for packaging?"
+  expectSources: [packaging-and-recycling]
+
+- id: ret-n-g25-en
+  niche: restaurant
+  language: en
+  question: "What happens to the food you cannot sell?"
+  expectSources: [food-waste-and-donations]
+
+- id: ret-n-g26-en
+  niche: restaurant
+  language: en
+  question: "Do you donate unsold bread?"
+  expectSources: [food-waste-and-donations]
+
+- id: ret-n-g27-en
+  niche: restaurant
+  language: en
+  question: "Can I ask for contactless delivery?"
+  expectSources: [contactless-delivery-and-drop-off]
+
+- id: ret-n-g28-en
+  niche: restaurant
+  language: en
+  question: "Can I pay in cash for a contactless drop-off?"
+  expectSources: [contactless-delivery-and-drop-off]
+
+- id: ret-n-g29-en
+  niche: restaurant
+  language: en
+  question: "What happens if the driver cannot find my address?"
+  expectSources: [hard-to-find-delivery-addresses]
+
+- id: ret-n-g30-en
+  niche: restaurant
+  language: en
+  question: "How long will the driver look for me at the address?"
+  expectSources: [hard-to-find-delivery-addresses]
+
+- id: ret-n-g31-en
+  niche: restaurant
+  language: en
+  question: "Can I use two promo codes on one order?"
+  expectSources: [promo-codes-and-coupons]
+
+- id: ret-n-g32-en
+  niche: restaurant
+  language: en
+  question: "Can I combine a coupon with the pickup discount?"
+  expectSources: [promo-codes-and-coupons]
+
+- id: ret-n-g33-en
+  niche: restaurant
+  language: en
+  question: "How long do you keep my order history?"
+  expectSources: [customer-data-and-privacy]
+
+- id: ret-n-g34-en
+  niche: restaurant
+  language: en
+  question: "How do I ask you to delete my personal data?"
+  expectSources: [customer-data-and-privacy]
+
+- id: ret-n-g35-en
+  niche: restaurant
+  language: en
+  question: "How quickly will you reply to my feedback?"
+  expectSources: [feedback-and-reviews]
+
+- id: ret-n-g36-en
+  niche: restaurant
+  language: en
+  question: "Do you give free food in exchange for a review?"
+  expectSources: [feedback-and-reviews]
+
+- id: ret-n-g37-en
+  niche: restaurant
+  language: en
+  question: "How long do seasonal specials usually run?"
+  expectSources: [seasonal-specials]
+
+- id: ret-n-g38-en
+  niche: restaurant
+  language: en
+  question: "Are seasonal specials available for catering?"
+  expectSources: [seasonal-specials]
+
+- id: ret-n-g39-en
+  niche: restaurant
+  language: en
+  question: "How many guests can the dining room seat?"
+  expectSources: [seating-capacity-and-layout]
+
+- id: ret-n-g40-en
+  niche: restaurant
+  language: en
+  question: "How many seats are on the patio?"
+  expectSources: [seating-capacity-and-layout]
+
+- id: ret-n-g41-en
+  niche: restaurant
+  language: en
+  question: "How many pizzas can I order in one WhatsApp order?"
+  expectSources: [order-size-limits]
+
+- id: ret-n-g42-en
+  niche: restaurant
+  language: en
+  question: "What is the largest order I can place without asking the team first?"
+  expectSources: [order-size-limits]
+
+- id: ret-n-g43-en
+  niche: restaurant
+  language: en
+  question: "How many parking spaces does the lot have?"
+  expectSources: [parking-and-getting-here]
+
+- id: ret-n-g44-en
+  niche: restaurant
+  language: en
+  question: "Are there accessible parking spaces near the side door?"
+  expectSources: [parking-and-getting-here]

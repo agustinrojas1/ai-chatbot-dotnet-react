@@ -7,7 +7,7 @@ namespace Chatbot.Evals.Running;
 /// <summary>A passage a <c>Retrieval</c> event returned. <paramref name="Relevant"/>: it passed the threshold, so the model was given it.</summary>
 internal sealed record RetrievedPassage(string SourceId, bool Relevant)
 {
-    /// <summary>The document: <c>cancelacion-y-no-show#1</c> is in <c>cancelacion-y-no-show</c>.</summary>
+    /// <summary>The document: <c>cancellation-and-no-show#1</c> is in <c>cancellation-and-no-show</c>.</summary>
     public string Slug => SourceId.Contains('#') ? SourceId[..SourceId.LastIndexOf('#')] : SourceId;
 }
 
