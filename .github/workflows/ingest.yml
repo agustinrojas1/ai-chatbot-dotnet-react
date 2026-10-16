@@ -1,0 +1,27 @@
+# Migrations, idempotent seed and knowledge indexing against the production database (ADR-019).
+# Daily, because the slots are a 14-day rolling window; run it by hand after the first deploy.
+name: ingest
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency: ingest
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet run --project api/src/Chatbot.Api --configuration Release -- ingest
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          ConnectionStrings__Postgres: ${{ secrets.POSTGRES_CONNECTION }}
+          Llm__Primary__BaseUrl: https://generativelanguage.googleapis.com/v1beta/openai/
+          Llm__Primary__Model: gemini-3.5-flash-lite
+          Llm__Primary__ApiKey: ${{ secrets.LLM_PRIMARY_API_KEY }}

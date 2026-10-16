@@ -242,6 +242,16 @@ Never commit `.env`. `.env.example` also has commented setups for local embeddin
 
 </details>
 
+### Deploy (free tier)
+
+The public demo runs on free plans with no credit card: the frontend on Vercel, the API on Render, PostgreSQL with pgvector on Neon, and Gemini (free tier) for the model and the embeddings. See [ADR-019](docs/decisions.md#adr-019-free-tier-hosting-render-neon-vercel-github-actions).
+
+1. Create a Neon project in `AWS us-east-1` and copy its direct connection string (not the `-pooler` host) into `DATABASE_URL` in `.env.production` (template: `deploy/env.production.example`), with your Gemini key.
+2. Run `deploy/set-github-secrets.sh`, then `gh workflow run ingest`. The `ingest` workflow applies the migrations, runs the seed and indexes the documents, and runs again every day because the slots are a 14-day rolling window.
+3. In Render, create a Blueprint from this repo. `render.yaml` declares the API; paste the output of `python3 deploy/neon-connection.py` into `ConnectionStrings__Postgres` and the Gemini key into `Llm__Primary__ApiKey`. `Admin__Key` is generated; read it in the Render dashboard.
+4. Import the repo in Vercel with `web` as the root directory and `VITE_API_BASE` set to the Render URL. `web/vercel.json` sends every path, `/admin` included, to the single-page app.
+5. Point an uptime monitor (UptimeRobot, free) at `<Render URL>/health` every 5 minutes, so the free instance does not sleep. `/health` does not touch the database, so Neon still scales to zero.
+
 ### Tests
 
 ```bash
@@ -357,7 +367,7 @@ The settings are in `.env.example`. In Docker, the local server must listen on `
 - **Embedding cost shows 0.** There is no verified price for `gemini-embedding-001`, so no `ModelPricing` row.
 - **Single-instance limits.** The per-IP limiter is in memory (per instance, reset on restart); the per-session and daily limits are in the database.
 - **Demo-grade admin.** One shared key, not an authentication system. The demo is not meant for real personal data: a typed name stays in the stored messages.
-- **No public deploy yet.**
+- **Free-tier hosting.** The API runs on 0.1 CPU and wakes Neon on the first query after 5 idle minutes, so some answers start slower (ADR-019).
 
 Next steps: deploy the demo and record the GIF, run the full eval suite on the English corpus with Gemini, investigate the empty tool arguments, add an LLM judge for faithfulness, and a shared store for the per-IP limiter.
 
