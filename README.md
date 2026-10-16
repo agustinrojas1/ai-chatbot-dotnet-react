@@ -46,41 +46,36 @@ The visitor picks one of three demo businesses, each with its own persona, catal
 ### System overview
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph Client["Browser"]
-    UI["React 19 chat<br/>+ agent trace panel"]
+    UI["React chat<br/>+ agent trace panel"]
     ADM["/admin view"]
   end
 
-  subgraph API["ASP.NET Core API (.NET 10)"]
+  subgraph API["ASP.NET Core API · .NET 10"]
     EP["Endpoints<br/>rate limits · CORS · SSE"]
-    AG["AgentService"]
-    TOOLS["Tools<br/>catalog · availability · booking<br/>handoff · knowledge search"]
+    AG["AgentService<br/>tool-calling loop"]
+    TOOLS["Tools<br/>catalog · availability · booking · handoff"]
     KS["KnowledgeSearch<br/>vector + full text + RRF"]
-    TR["TraceRecorder"]
+    TR["TraceRecorder<br/>tokens · latency · cost"]
   end
 
-  subgraph Data["PostgreSQL 17 + pgvector"]
-    DB[("catalog · slots · bookings<br/>sessions · messages · traces<br/>knowledge chunks")]
-  end
+  LLM["Chat model<br/>Gemini · fallback · local"]
+  EMB["Embeddings<br/>gemini-embedding-001 · local"]
+  DB[("PostgreSQL 17 + pgvector<br/>catalog · slots · bookings · sessions<br/>messages · traces · knowledge chunks")]
 
-  subgraph Providers["Model providers (OpenAI-compatible)"]
-    LLM["Chat model<br/>Gemini · fallback · local"]
-    EMB["Embeddings<br/>gemini-embedding-001 · local"]
-  end
-
-  UI -- "POST message → SSE stream" --> EP
+  UI -- "POST message, SSE stream back" --> EP
   ADM -- "REST + X-Admin-Key" --> EP
   EP --> AG
   AG <--> LLM
   AG --> TOOLS
-  TOOLS --> DB
+  AG --> TR
   TOOLS --> KS
   KS --> EMB
+  TOOLS --> DB
   KS --> DB
-  AG -. "trace events" .-> TR
   TR --> DB
-  TR -. "live over SSE" .-> UI
+  TR -. "trace events, live" .-> UI
 ```
 
 The model client is a decorator chain built per request, outermost first:
@@ -128,53 +123,45 @@ A failed run ends with an `error` event instead (`retryable` says whether resend
 
 ```mermaid
 flowchart TB
-  subgraph Ingestion["Ingestion (startup in Development, or the ingest command)"]
-    MD["Markdown documents<br/>40 per business"] --> CH["Chunker<br/>one chunk per section<br/>Title › Heading context line"]
-    CH --> HASH{"content hash<br/>changed?"}
-    HASH -- no --> SKIP["skip: no API call"]
-    HASH -- yes --> EMB1["embed in batches of 32<br/>backoff on 429"]
-    EMB1 --> STORE[("knowledge_chunks<br/>vector(768) HNSW + tsvector GIN")]
+  subgraph Ingestion["Ingestion · at startup in Development, or the ingest command"]
+    direction LR
+    MD["Markdown<br/>40 docs per business"] --> CH["Chunker<br/>one chunk per section"] --> HASH{"hash<br/>changed?"}
+    HASH -- yes --> EMB1["embed<br/>batches of 32"] --> STORE[("vector(768) HNSW<br/>+ tsvector GIN")]
+    HASH -- no --> SKIP["skip"]
   end
 
-  subgraph Retrieval["Retrieval: search_knowledge_base(query)"]
-    Q["query"] --> EMB2["embed query"]
-    EMB2 --> SEM["semantic top 20<br/>cosine distance"]
-    Q --> LEX["lexical top 20<br/>ts_rank, every content word"]
-    SEM --> RRF["Reciprocal Rank Fusion<br/>k = 60, best 4"]
-    LEX --> RRF
-    RRF --> TH{"above relevance<br/>threshold?"}
-    TH -- yes --> PASS["passages to the model<br/>(data, never instructions)"]
-    TH -- no --> NONE["found: false<br/>agent says it does not know<br/>and offers a person"]
+  subgraph Retrieval["Retrieval · search_knowledge_base(query)"]
+    direction LR
+    Q["query"] --> SEM["semantic top 20<br/>cosine"] & LEX["lexical top 20<br/>ts_rank"]
+    SEM & LEX --> RRF["RRF k=60<br/>best 4"] --> TH{"above<br/>threshold?"}
+    TH -- yes --> PASS["passages<br/>to the model"]
+    TH -- no --> NONE["found: false<br/>offer a person"]
   end
 
-  STORE -.-> SEM
-  STORE -.-> LEX
+  Ingestion -- "chunks of this business" --> Retrieval
 ```
 
 Both rankings are filtered by the session's business in SQL, and only vectors of the current embedding model are compared. Every search is recorded as a `Retrieval` trace event with the semantic, lexical and fused score of each passage.
 
 ### What protects a booking
 
-`create_booking` runs these checks in order. Every refusal goes back to the model as a tool error with a code, so it can tell the customer and try again; the guardrail ones (session, customer data, slot) are also recorded as `Guardrail` trace events.
+`create_booking` runs these checks in order before a seat is taken:
 
 ```mermaid
-flowchart TB
-  M["Model calls create_booking"] --> A{"arguments valid?"}
-  A -- no --> RA["invalid_* · missing_target"]
-  A -- yes --> S{"session Active?"}
-  S -- no --> RS["session_awaiting_human ·<br/>session_closed"]
-  S -- yes --> C{"name and phone written<br/>by the visitor in this chat?"}
-  C -- no --> RC["customer_data_not_provided"]
-  C -- yes --> K{"same idempotency key<br/>already booked?"}
-  K -- yes --> EX["return the existing booking<br/>(no second seat)"]
-  K -- no --> V{"offering and slot exist in this<br/>business, slot not started?"}
-  V -- no --> RV["offering_not_found · slot_not_found ·<br/>slot_in_past · slot_offering_mismatch"]
-  V -- yes --> U{"atomic UPDATE<br/>only if booked is below capacity"}
-  U -- "0 rows" --> RF["slot_full"]
-  U -- "1 row" --> OK["Booking row: PendingConfirmation<br/>order total computed from catalog prices"]
+flowchart LR
+  M(["create_booking"]) --> C1["valid arguments,<br/>session Active"] --> C2["name and phone<br/>typed by the visitor"] --> C3["new<br/>idempotency key"] --> C4["slot in this business,<br/>not started, seat free"] --> OK[("Booking<br/>PendingConfirmation")]
 ```
 
-The prompt asks the model to summarize and wait for an explicit "yes" before booking; the checks above hold even when it does not. Concurrent attempts on the last seat have exactly one winner (tested against a real PostgreSQL).
+| Check | If it fails |
+|---|---|
+| Arguments are valid | `invalid_*`, `missing_target` |
+| The session is `Active` (not handed to a person, not closed) | `session_awaiting_human`, `session_closed` |
+| Name and phone appear in the visitor's own messages | `customer_data_not_provided` |
+| No booking with the same idempotency key | the existing booking is returned: no second seat |
+| Offering and slot belong to this business, the slot has not started | `offering_not_found`, `slot_not_found`, `slot_in_past`, `slot_offering_mismatch` |
+| Atomic `UPDATE ... WHERE booked < capacity` takes the seat | `slot_full` |
+
+A refusal goes back to the model as a tool error with its code, so it can tell the customer and try again; the session, customer-data and slot refusals are also recorded as `Guardrail` trace events. Order totals are computed from catalog prices on the server. The prompt asks the model to summarize and wait for an explicit "yes" before booking; these checks hold even when it does not, and concurrent attempts on the last seat have exactly one winner (tested against a real PostgreSQL).
 
 ### Repository layout
 
