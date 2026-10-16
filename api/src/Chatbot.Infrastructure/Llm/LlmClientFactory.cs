@@ -36,7 +36,8 @@ public static class LlmClientFactory
             ? new LlmEndpoint(new UnconfiguredChatClient(), "unconfigured", options.Primary.Model)
             : CreateEndpoint(options.Primary, retries: fallback is null ? null : 0);
 
-        return new FallbackChatClient(primary, fallback, loggerFactory?.CreateLogger<FallbackChatClient>());
+        var firstUpdateTimeout = options.FirstTokenTimeoutSeconds > 0 ? TimeSpan.FromSeconds(options.FirstTokenTimeoutSeconds) : (TimeSpan?)null;
+        return new FallbackChatClient(primary, fallback, loggerFactory?.CreateLogger<FallbackChatClient>(), firstUpdateTimeout);
     }
 
     /// <summary><c>generativelanguage.googleapis.com</c> → <c>gemini</c>, <c>api.groq.com</c> → <c>groq</c>, otherwise the host.</summary>
